@@ -409,8 +409,9 @@ class GeneralizationTester:
                 self.simulator.stop_simulation()
             if self.bridge:
                 self.bridge.disconnect()
-        except:
-            pass
+        except Exception as e:
+            import logging
+            logging.warning(f"Cleanup failed: {e}")
 
 
 def test_generalization_capabilities():

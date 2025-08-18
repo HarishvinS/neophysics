@@ -379,7 +379,7 @@ class CausalRuleLearner:
                     'will_decelerate': True,
                     'eventually_stop': True
                 },
-                confidence=friction_stops / len(events),
+                confidence=friction_stops / len(events) if events else 0,
                 evidence_count=friction_stops,
                 success_rate=1.0
             )
@@ -451,6 +451,8 @@ class CausalRuleLearner:
         
         if confidences:
             summary['average_confidence'] = sum(confidences) / len(confidences)
+        else:
+            summary['average_confidence'] = 0
         
         return summary
 
@@ -506,8 +508,7 @@ def test_physics_reasoning_engine():
     learner = CausalRuleLearner()
     
     # Add more events to meet minimum evidence threshold
-    for i in range(5):
-        events.extend(events)  # Duplicate events for testing
+    events = events * 6  # More efficient than repeated extend operations
     
     learned_rules = learner.learn_from_events(events, scene)
     

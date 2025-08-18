@@ -79,6 +79,11 @@ def generate_filtered_dataset(num_examples: int, min_score: float = 0.5,
 def save_dataset_multiple_formats(examples: List[TrainingExample], base_path: str):
     """Save dataset in multiple formats for different use cases."""
     
+    # Sanitize path to prevent traversal attacks
+    base_path = os.path.normpath(base_path)
+    if '..' in base_path or base_path.startswith('/'):
+        raise ValueError("Invalid path: path traversal detected")
+    
     # Create data directory if it doesn't exist
     os.makedirs(os.path.dirname(base_path), exist_ok=True)
     

@@ -199,6 +199,10 @@ class TextToSceneModel(nn.Module):
         
         self.hidden_size = hidden_size
         self.max_objects = max_objects
+        
+        # Load pre-trained weights if specified
+        if config and config.model_path:
+            self.load_checkpoint(config.model_path)
     
     def forward(self, texts: List[str]) -> Dict[str, torch.Tensor]:
         """
@@ -286,6 +290,33 @@ class TextToSceneModel(nn.Module):
                 scene.add_object(obj)
             
             return scene
+    
+    def load_checkpoint(self, checkpoint_path: str):
+        """Load model weights from checkpoint."""
+        try:
+            checkpoint = torch.load(checkpoint_path, map_location='cpu')
+            if 'model_state_dict' in checkpoint:
+                self.load_state_dict(checkpoint['model_state_dict'])
+            else:
+                self.load_state_dict(checkpoint)
+            print(f"✅ Loaded model weights from {checkpoint_path}")
+        except Exception as e:
+            print(f"⚠️ Failed to load checkpoint {checkpoint_path}: {e}")
+    
+    def save_checkpoint(self, checkpoint_path: str, epoch: int = None, optimizer_state: dict = None):
+        """Save model checkpoint."""
+        checkpoint = {
+            'model_state_dict': self.state_dict(),
+            'hidden_size': self.hidden_size,
+            'max_objects': self.max_objects
+        }
+        if epoch is not None:
+            checkpoint['epoch'] = epoch
+        if optimizer_state:
+            checkpoint['optimizer_state_dict'] = optimizer_state
+        
+        torch.save(checkpoint, checkpoint_path)
+        print(f"✅ Saved model checkpoint to {checkpoint_path}")
 
 
 class ModelConfig:
@@ -315,6 +346,7 @@ class ModelConfig:
         
         # Paths
         self.checkpoint_dir = 'models/checkpoints'
+        self.model_path = None  # Path to pre-trained model
         
         # Evaluation
         self.eval_frequency = 5  # epochs

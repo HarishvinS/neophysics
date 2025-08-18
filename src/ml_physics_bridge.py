@@ -240,6 +240,96 @@ class MLPhysicsBridge:
         if self.physics_engine is None:
             raise RuntimeError("Physics engine not initialized")
         
+        if not self.current_scene:
+            raise RuntimeError("No scene loaded for simulation")
+        
+        print(f"🏃 Running simulation for {duration:.1f}s...")
+        
+        # Initialize simulation data collection
+        simulation_data = {
+            'duration': duration,
+            'frames': [],
+            'object_trajectories': {},
+            'events': []
+        }
+        
+        # Calculate simulation parameters
+        timestep = 1.0 / 240.0  # 240 Hz
+        total_steps = int(duration / timestep)
+        
+        # Run simulation
+        for step in range(total_steps):
+            # Step physics
+            self.physics_engine.step_simulation()
+            
+            # Collect data every 10 steps (24 Hz data collection)
+            if step % 10 == 0:
+                frame_data = self._collect_frame_data(step * timestep)
+                simulation_data['frames'].append(frame_data)
+            
+            # Real-time delay if requested
+            if real_time:
+                import time
+                time.sleep(timestep)
+        
+        # Process trajectories
+        self._process_trajectories(simulation_data)
+        
+        print(f"✅ Simulation completed: {len(simulation_data['frames'])} frames collected")
+        
+        return simulation_data
+    
+    def _collect_frame_data(self, timestamp: float) -> Dict:
+        """Collect physics data for a single frame."""
+        frame_data = {
+            'timestamp': timestamp,
+            'object_states': {}
+        }
+        
+        # Collect state for each physics object
+        for ml_id, physics_id in self.ml_to_physics_mapping.items():
+            try:
+                state = self.physics_engine.get_object_state(physics_id)
+                if state:
+                    frame_data['object_states'][ml_id] = {
+                        'position': state['position'].tolist(),
+                        'velocity': state['velocity'].tolist(),
+                        'angular_velocity': state['angular_velocity'].tolist()
+                    }
+            except Exception as e:
+                print(f"⚠️ Error collecting state for {ml_id}: {e}")
+        
+        return frame_data
+    
+    def _process_trajectories(self, simulation_data: Dict):
+        """Process frame data into object trajectories."""
+        trajectories = {}
+        
+        for frame in simulation_data['frames']:
+            for obj_id, state in frame['object_states'].items():
+                if obj_id not in trajectories:
+                    trajectories[obj_id] = {
+                        'positions': [],
+                        'velocities': [],
+                        'timestamps': []
+                    }
+                
+                trajectories[obj_id]['positions'].append(state['position'])
+                trajectories[obj_id]['velocities'].append(state['velocity'])
+                trajectories[obj_id]['timestamps'].append(frame['timestamp'])
+        
+        simulation_data['object_trajectories'] = trajectories
+    
+    def clear_scene(self):
+        """Clear the current physics scene."""
+        if self.physics_engine:
+            self.physics_engine.clear_objects(keep_ground=True)
+        
+        self.ml_to_physics_mapping.clear()
+        self.physics_to_ml_mapping.clear()
+        self.current_scene = None
+        self.simulation_running = Falseinitialized")
+        
         print(f"🏃 Running simulation for {duration}s...")
         
         # Record initial states

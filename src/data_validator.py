@@ -13,6 +13,13 @@ from scene_representation import PhysicsScene, PhysicsObject, ObjectType, Materi
 class PhysicsValidator:
     """Validates physics scenes for plausibility."""
     
+    # Configuration constants
+    ICE_MAX_FRICTION = 0.3
+    BOUNCY_MIN_RESTITUTION = 0.8
+    SIGNIFICANT_OVERLAP_THRESHOLD = 0.5
+    SIZE_ESTIMATION_FACTOR = 0.5
+    DEFAULT_VALIDATION_SCORE = 0.5
+    
     def __init__(self):
         """Initialize the physics validator."""
         self.validation_rules = {
@@ -61,7 +68,7 @@ class PhysicsValidator:
             except Exception as e:
                 results["issues"].append(f"Error in rule {rule_name}: {str(e)}")
                 results["valid"] = False
-                results["score"] *= 0.5
+                results["score"] *= self.DEFAULT_VALIDATION_SCORE
         
         return results
     
@@ -179,10 +186,10 @@ class PhysicsValidator:
                 issues.append(f"Object {obj.object_id} has invalid density: {props.density}")
             
             # Material-specific checks
-            if obj.material == MaterialType.ICE and props.friction > 0.3:
+            if obj.material == MaterialType.ICE and props.friction > self.ICE_MAX_FRICTION:
                 warnings.append(f"Ice object {obj.object_id} has high friction: {props.friction}")
             
-            if obj.material == MaterialType.BOUNCY and props.restitution < 0.8:
+            if obj.material == MaterialType.BOUNCY and props.restitution < self.BOUNCY_MIN_RESTITUTION:
                 warnings.append(f"Bouncy object {obj.object_id} has low restitution: {props.restitution}")
         
         return {
@@ -212,7 +219,7 @@ class PhysicsValidator:
                 size2 = max(obj2.scale.x, obj2.scale.y, obj2.scale.z)
                 min_distance = (size1 + size2) * 0.5
                 
-                if distance < min_distance * 0.5:  # Significant overlap
+                if distance < min_distance * self.SIGNIFICANT_OVERLAP_THRESHOLD:  # Significant overlap
                     issues.append(f"Objects {obj1.object_id} and {obj2.object_id} overlap significantly")
                 elif distance < min_distance:  # Minor overlap
                     warnings.append(f"Objects {obj1.object_id} and {obj2.object_id} are very close")
@@ -483,8 +490,8 @@ class DatasetValidator:
             all_warnings.extend(result["warnings"])
         
         # Calculate statistics
-        validity_rate = valid_count / len(examples)
-        average_score = total_score / len(examples)
+        validity_rate = valid_count / len(examples) if examples else 0
+        average_score = total_score / len(examples) if examples else 0
         
         return {
             "dataset_valid": validity_rate > 0.8,  # 80% validity threshold

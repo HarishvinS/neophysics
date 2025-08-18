@@ -90,7 +90,7 @@ class PhysicsEngine:
         visual_shape = p.createVisualShape(
             p.GEOM_SPHERE,
             radius=radius,
-            rgbaColor=[color[0], color[1], color[2], 1.0]
+            rgbaColor=list(color) + [1.0]
         )
         
         # Create multi-body
@@ -141,7 +141,7 @@ class PhysicsEngine:
         visual_shape = p.createVisualShape(
             p.GEOM_BOX,
             halfExtents=half_extents,
-            rgbaColor=[color[0], color[1], color[2], 1.0]
+            rgbaColor=list(color) + [1.0]
         )
         
         # Create multi-body
@@ -193,7 +193,7 @@ class PhysicsEngine:
         visual_shape = p.createVisualShape(
             p.GEOM_BOX,
             halfExtents=[size[0]/2, size[1]/2, size[2]/2],
-            rgbaColor=[color[0], color[1], color[2], 1.0]
+            rgbaColor=list(color) + [1.0]
         )
         
         # Calculate orientation (rotation around Y-axis)

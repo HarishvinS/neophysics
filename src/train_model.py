@@ -33,7 +33,10 @@ def train_model(dataset_path: str, config: ModelConfig, save_dir: str = "models"
     print("🚀 Starting Text-to-Scene Model Training")
     print("=" * 50)
     
-    # Create save directory
+    # Sanitize and create save directory
+    save_dir = os.path.normpath(save_dir)
+    if '..' in save_dir or save_dir.startswith('/'):
+        raise ValueError("Invalid save directory: path traversal detected")
     os.makedirs(save_dir, exist_ok=True)
     
     # Save configuration

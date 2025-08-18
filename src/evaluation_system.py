@@ -10,6 +10,14 @@ from typing import Dict, List, Tuple, Optional
 import json
 import matplotlib.pyplot as plt
 from sklearn.metrics import accuracy_score, precision_recall_fscore_support
+import random
+
+# Set random seeds for reproducibility
+torch.manual_seed(42)
+np.random.seed(42)
+random.seed(42)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed(42)
 
 from model_architecture import TextToSceneModel
 from scene_representation import PhysicsScene, ObjectType, MaterialType

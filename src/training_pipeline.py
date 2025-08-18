@@ -317,12 +317,23 @@ class Trainer:
             print(f"\nEpoch {epoch + 1}/{self.config.num_epochs}")
             print("-" * 50)
             
-            # Train
-            train_losses = self.train_epoch()
-            self.train_losses.append(train_losses)
+            # Train with error handling
+            try:
+                train_losses = self.train_epoch()
+                self.train_losses.append(train_losses)
+            except RuntimeError as e:
+                if "out of memory" in str(e).lower():
+                    print(f"CUDA out of memory error. Try reducing batch size.")
+                    raise
+                else:
+                    raise
             
             # Validate
-            val_losses = self.validate()
+            try:
+                val_losses = self.validate()
+            except Exception as e:
+                print(f"Validation error: {e}")
+                val_losses = {}
             if val_losses:
                 self.val_losses.append(val_losses)
                 
@@ -346,8 +357,8 @@ class Trainer:
                 if is_best:
                     print("  *** New best model! ***")
             
-            # Save checkpoint
-            if (epoch + 1) % self.config.save_frequency == 0:
+            # Save checkpoint (including final epoch)
+            if (epoch + 1) % self.config.save_frequency == 0 or epoch == self.config.num_epochs - 1:
                 checkpoint_path = os.path.join(self.checkpoint_dir, f"checkpoint_epoch_{epoch + 1}.pth")
                 self.save_checkpoint(checkpoint_path, is_best)
                 print(f"  Checkpoint saved: {checkpoint_path}")
@@ -375,13 +386,21 @@ def create_training_pipeline(dataset_path: str, config: ModelConfig = None) -> T
     processor = DatasetProcessor(max_objects=config.max_objects)
     texts, encoded_scenes = processor.prepare_training_data(dataset_path)
     
+    # Shuffle data before splitting to prevent bias
+    import random
+    indices = list(range(len(texts)))
+    random.shuffle(indices)
+    
     # Split into train/validation
     split_idx = int(0.8 * len(texts))
-    train_texts = texts[:split_idx]
-    val_texts = texts[split_idx:]
+    train_indices = indices[:split_idx]
+    val_indices = indices[split_idx:]
     
-    train_encoded = {key: tensor[:split_idx] for key, tensor in encoded_scenes.items()}
-    val_encoded = {key: tensor[split_idx:] for key, tensor in encoded_scenes.items()}
+    train_texts = [texts[i] for i in train_indices]
+    val_texts = [texts[i] for i in val_indices]
+    
+    train_encoded = {key: tensor[train_indices] for key, tensor in encoded_scenes.items()}
+    val_encoded = {key: tensor[val_indices] for key, tensor in encoded_scenes.items()}
     
     print(f"Train examples: {len(train_texts)}")
     print(f"Validation examples: {len(val_texts)}")
