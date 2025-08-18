@@ -87,6 +87,9 @@ neophysics/
 
    # Week 5: Advanced Understanding
    python examples/demo_week5.py
+
+   # Week 6: Continuous Learning
+   python examples/demo_week6.py
    ```
 
 5. Generate training data:
@@ -167,10 +170,17 @@ neophysics/
 ✅ Comprehensive generalization testing
 ✅ Architectural limitation analysis and solutions
 
-### Next: Week 6 - Continuous Learning Integration
-⏳ Self-improvement loops with user feedback
-⏳ Performance tracking and adaptation
-⏳ Real-time learning from outcomes
+### Week 6: COMPLETED ✅
+✅ User feedback collection and analysis system
+✅ Active learning with uncertainty and diversity sampling
+✅ Comprehensive performance tracking and monitoring
+✅ Automated self-improvement loop
+✅ Continuous learning validation framework
+
+### Next: Week 7 - Advanced Physics Understanding
+⏳ Deep physics reasoning and causal modeling
+⏳ Multi-step physics prediction
+⏳ Complex scenario understanding
 
 ## License
 
