@@ -37,23 +37,31 @@ class SceneMetrics:
     
     def object_type_accuracy(self, predictions: Dict[str, torch.Tensor], 
                            targets: Dict[str, torch.Tensor]) -> Dict[str, float]:
-        """Calculate object type prediction accuracy."""
-        # Get predicted types (threshold at 0.5)
-        pred_types = (predictions['object_type_probs'] > 0.5).float()
-        true_types = targets['object_types']
-        
-        # Calculate per-object accuracy
-        correct_predictions = (pred_types == true_types).float()
-        
-        # Overall accuracy
-        overall_accuracy = correct_predictions.mean().item()
-        
+        """Calculate object type prediction accuracy using argmax for consistency."""
+        # Get predicted and true type indices
+        pred_type_indices = torch.argmax(predictions['object_type_probs'], dim=2)
+        true_type_indices = torch.argmax(targets['object_types'], dim=2)
+
+        # Create a mask to only evaluate existing objects based on ground truth count
+        true_counts = torch.argmax(targets['object_count'], dim=1)
+        max_len = pred_type_indices.shape[1]
+        mask = torch.arange(max_len, device=true_counts.device).unsqueeze(0) < true_counts.unsqueeze(1)
+
+        if mask.sum() == 0:
+            return {'overall': 1.0, 'per_type': {}} # Perfect score if no objects to evaluate
+
+        # Calculate accuracy only for existing objects
+        correct_predictions = (pred_type_indices[mask] == true_type_indices[mask])
+        overall_accuracy = correct_predictions.float().mean().item()
+
         # Per-type accuracy
         type_accuracies = {}
         for i, obj_type in enumerate(ObjectType):
-            type_mask = true_types[:, :, i] == 1
+            # Mask for where this type was the ground truth among existing objects
+            type_mask = (true_type_indices == i) & mask
             if type_mask.sum() > 0:
-                type_acc = correct_predictions[:, :, i][type_mask].mean().item()
+                # Accuracy for this specific type
+                type_acc = (pred_type_indices[type_mask] == true_type_indices[type_mask]).float().mean().item()
                 type_accuracies[obj_type.value] = type_acc
         
         return {
