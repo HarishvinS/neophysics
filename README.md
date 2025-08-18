@@ -78,6 +78,9 @@ neophysics/
 
    # Week 2: Data Generation
    python examples/demo_week2.py
+
+   # Week 3: ML Pipeline
+   python examples/demo_week3.py
    ```
 
 5. Generate training data:
@@ -89,7 +92,16 @@ neophysics/
    python src/generate_dataset.py --num_examples 1000
    ```
 
-6. Run tests to verify everything works:
+6. Train the ML model:
+   ```bash
+   # Quick training (5 epochs)
+   python src/train_model.py --quick
+
+   # Full training (20 epochs)
+   python src/train_model.py --epochs 20
+   ```
+
+7. Run tests to verify everything works:
    ```bash
    python examples/test_basic_functionality.py
    ```
@@ -113,10 +125,19 @@ neophysics/
 ✅ Large-scale dataset generation (1000+ examples)
 ✅ Multiple output formats (JSON, CSV)
 
-### Next: Week 3 - Basic ML Pipeline
-⏳ Text-to-scene model implementation
-⏳ Training loop and optimization
-⏳ Basic evaluation system
+### Week 3: COMPLETED ✅
+✅ Neural network architecture (67M parameters)
+✅ Text encoder using pre-trained transformers
+✅ Scene decoder with multi-task outputs
+✅ Complete training pipeline with loss functions
+✅ Comprehensive evaluation system
+✅ Physics plausibility assessment
+✅ End-to-end text-to-scene translation
+
+### Next: Week 4 - Scene-to-Physics Integration
+⏳ ML model integration with PyBullet
+⏳ Real-time physics validation
+⏳ End-to-end text → 3D simulation
 
 ## License
 
