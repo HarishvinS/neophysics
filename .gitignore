@@ -1,6 +1,10 @@
 # Virtual environment
 venv/
 
+# Data and Models (should not be in Git)
+data/
+models/
+
 # Python cache
 __pycache__/
 *.pyc
