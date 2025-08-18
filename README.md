@@ -84,6 +84,9 @@ neophysics/
 
    # Week 4: Complete Integration
    python examples/demo_week4.py
+
+   # Week 5: Advanced Understanding
+   python examples/demo_week5.py
    ```
 
 5. Generate training data:
@@ -157,8 +160,17 @@ neophysics/
 ✅ End-to-end pipeline validation
 ✅ Performance optimization (24+ commands/second)
 
-### 🎉 PROJECT COMPLETE!
-**Learnable Physics Engine is now fully functional!**
+### Week 5: COMPLETED ✅
+✅ Dynamic scene representation (no fixed-size limits)
+✅ Physics reasoning engine (causal understanding)
+✅ Advanced relational understanding (beyond templates)
+✅ Comprehensive generalization testing
+✅ Architectural limitation analysis and solutions
+
+### Next: Week 6 - Continuous Learning Integration
+⏳ Self-improvement loops with user feedback
+⏳ Performance tracking and adaptation
+⏳ Real-time learning from outcomes
 
 ## License
 
