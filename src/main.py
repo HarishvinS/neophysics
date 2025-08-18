@@ -313,8 +313,8 @@ class PhysicsEngineApp:
         try:
             if self.physics_engine is not None:
                 self.physics_engine.disconnect()
-        except:
-            pass  # Ignore cleanup errors
+        except (AttributeError, RuntimeError) as e:
+            print(f"Warning during cleanup: {e}")
         
         self.root.destroy()
 

@@ -31,9 +31,9 @@ def demo_basic_physics():
         color=(0.2, 0.2, 0.8)  # Blue
     )
     
-    # Create multiple balls
-    print("Adding balls...")
-    balls = []
+    # Create multiple spheres
+    print("Adding spheres...")
+    spheres = []
     
     # Red ball - heavy
     ball1 = engine.create_sphere(
@@ -42,7 +42,7 @@ def demo_basic_physics():
         mass=3.0,
         color=(1, 0, 0)
     )
-    balls.append(("Heavy red ball", ball1))
+    spheres.append(("Heavy red sphere", ball1))
     
     # Green ball - light
     ball2 = engine.create_sphere(
@@ -51,7 +51,7 @@ def demo_basic_physics():
         mass=0.5,
         color=(0, 1, 0)
     )
-    balls.append(("Light green ball", ball2))
+    spheres.append(("Light green sphere", ball2))
     
     # Blue ball - medium
     ball3 = engine.create_sphere(
@@ -60,7 +60,7 @@ def demo_basic_physics():
         mass=1.5,
         color=(0, 0, 1)
     )
-    balls.append(("Medium blue ball", ball3))
+    spheres.append(("Medium blue sphere", ball3))
     
     # Add some boxes too
     print("Adding boxes...")
@@ -80,7 +80,7 @@ def demo_basic_physics():
     
     print("\n🎬 Starting simulation...")
     print("Watch the PyBullet 3D viewer to see the physics in action!")
-    print("The balls will roll down the ramp. Observe how their different properties affect their motion.")
+    print("The spheres will roll down the ramp. Observe how their different properties affect their motion.")
     
     # Run simulation with status updates
     duration = 8.0
@@ -97,9 +97,9 @@ def demo_basic_physics():
             elapsed = i / display_fps
             print(f"⏱️ Simulation time: {elapsed:.1f}s / {duration}s")
             
-            # Show ball positions
-            for name, ball_id in balls:
-                state = engine.get_object_state(ball_id)
+            # Show sphere positions
+            for name, sphere_id in spheres:
+                state = engine.get_object_state(sphere_id)
                 pos = state['position']
                 speed = (state['velocity'][0]**2 + state['velocity'][1]**2 + state['velocity'][2]**2)**0.5
                 print(f"   {name}: pos=({pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f}), speed={speed:.2f}m/s")
@@ -110,8 +110,8 @@ def demo_basic_physics():
     
     # Final positions
     print("\n📊 Final Results:")
-    for name, ball_id in balls:
-        state = engine.get_object_state(ball_id)
+    for name, sphere_id in spheres:
+        state = engine.get_object_state(sphere_id)
         pos = state['position']
         print(f"   {name}: final position = ({pos[0]:.2f}, {pos[1]:.2f}, {pos[2]:.2f})")
     

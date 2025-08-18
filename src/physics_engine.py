@@ -269,15 +269,19 @@ class PhysicsEngine:
         Returns:
             dict: Object state information
         """
-        pos, orn = p.getBasePositionAndOrientation(object_id)
-        vel, ang_vel = p.getBaseVelocity(object_id)
-        
-        return {
-            'position': np.array(pos),
-            'orientation': np.array(orn),
-            'velocity': np.array(vel),
-            'angular_velocity': np.array(ang_vel)
-        }
+        try:
+            pos, orn = p.getBasePositionAndOrientation(object_id)
+            vel, ang_vel = p.getBaseVelocity(object_id)
+            
+            return {
+                'position': np.array(pos),
+                'orientation': np.array(orn),
+                'velocity': np.array(vel),
+                'angular_velocity': np.array(ang_vel)
+            }
+        except Exception as e:
+            print(f"Error getting object state: {e}")
+            return None
     
     def clear_objects(self, keep_ground=True):
         """
@@ -293,7 +297,8 @@ class PhysicsEngine:
             p.removeBody(object_id)
             del self.objects[name]
         
-        self.object_counter = 0
+        # Don't reset counter to maintain unique naming
+        # self.object_counter = 0
     
     def disconnect(self):
         """Disconnect from PyBullet."""
@@ -334,8 +339,11 @@ def test_physics_engine():
     print(f"Final ball position: {ball_state['position']}")
     print(f"Final ball velocity: {ball_state['velocity']}")
     
-    # Keep window open
-    input("Press Enter to close...")
+    # Keep window open (optional for automated testing)
+    try:
+        input("Press Enter to close...")
+    except (EOFError, KeyboardInterrupt):
+        print("\nTest completed.")
     
     # Cleanup
     engine.disconnect()

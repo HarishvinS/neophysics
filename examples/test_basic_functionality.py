@@ -49,43 +49,43 @@ def test_physics_simulation():
         size=[3, 0.2, 1]
     )
     
-    # Create a ball on the ramp (positioned to actually be on the slope)
-    ball_id = engine.create_sphere(
+    # Create a sphere on the ramp (positioned to actually be on the slope)
+    sphere_id = engine.create_sphere(
         position=[-1.0, 0, 1.5],  # On the high end of the ramp
         radius=0.1,
         mass=2.0
     )
     
     # Get initial state
-    initial_state = engine.get_object_state(ball_id)
-    print(f"Initial ball position: {initial_state['position']}")
-    print(f"Initial ball velocity: {initial_state['velocity']}")
+    initial_state = engine.get_object_state(sphere_id)
+    print(f"Initial sphere position: {initial_state['position']}")
+    print(f"Initial sphere velocity: {initial_state['velocity']}")
     
     # Run simulation
     print("Running simulation for 3 seconds...")
     engine.run_simulation(duration=3.0, real_time=False)  # Fast simulation
     
     # Get final state
-    final_state = engine.get_object_state(ball_id)
-    print(f"Final ball position: {final_state['position']}")
-    print(f"Final ball velocity: {final_state['velocity']}")
+    final_state = engine.get_object_state(sphere_id)
+    print(f"Final sphere position: {final_state['position']}")
+    print(f"Final sphere velocity: {final_state['velocity']}")
     
-    # Verify physics worked (ball should have moved down the ramp)
+    # Verify physics worked (sphere should have moved down the ramp)
     position_change_x = abs(final_state['position'][0] - initial_state['position'][0])
     position_change_z = abs(final_state['position'][2] - initial_state['position'][2])
 
     if position_change_x > 0.5 or position_change_z > 0.5:
-        print("✅ Ball moved significantly - physics working!")
+        print("✅ Sphere moved significantly - physics working!")
     else:
-        print("❌ Ball didn't move much - check physics setup")
+        print("❌ Sphere didn't move much - check physics setup")
         print(f"   X movement: {position_change_x:.3f}, Z movement: {position_change_z:.3f}")
         return False
     
-    # Verify ball is near ground level
+    # Verify sphere is near ground level
     if final_state['position'][2] < 0.5:  # Should be close to ground
-        print("✅ Ball reached ground level - gravity working!")
+        print("✅ Sphere reached ground level - gravity working!")
     else:
-        print("❌ Ball is still high up - check gravity")
+        print("❌ Sphere is still high up - check gravity")
         return False
     
     engine.disconnect()
@@ -129,30 +129,30 @@ def test_material_properties():
     
     engine = PhysicsEngine(use_gui=False)
     
-    # Create two balls with different properties
-    bouncy_ball = engine.create_sphere(
+    # Create two spheres with different properties
+    bouncy_sphere = engine.create_sphere(
         position=[0, 0, 2],
         radius=0.1,
         mass=1.0
     )
     
-    engine.set_object_properties(bouncy_ball, restitution=0.9)
+    engine.set_object_properties(bouncy_sphere, restitution=0.9)
     
     # Run simulation and check bounce
     initial_height = 2.0
     engine.run_simulation(duration=2.0, real_time=False)
     
     # Get state after first bounce
-    state = engine.get_object_state(bouncy_ball)
+    state = engine.get_object_state(bouncy_sphere)
     current_height = state['position'][2]
     
-    print(f"Ball height after bounce: {current_height:.3f}m")
+    print(f"Sphere height after bounce: {current_height:.3f}m")
     
-    # Ball should have bounced (not at ground level)
+    # Sphere should have bounced (not at ground level)
     if current_height > 0.2:
-        print("✅ Ball bounced - material properties working!")
+        print("✅ Sphere bounced - material properties working!")
     else:
-        print("⚠️ Ball didn't bounce much - this might be normal")
+        print("⚠️ Sphere didn't bounce much - this might be normal")
     
     engine.disconnect()
     return True

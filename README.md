@@ -71,12 +71,25 @@ neophysics/
    python src/main.py
    ```
 
-4. Or try the Week 1 demo:
+4. Try the demos:
    ```bash
+   # Week 1: Basic Physics
    python examples/demo_week1.py
+
+   # Week 2: Data Generation
+   python examples/demo_week2.py
    ```
 
-5. Run tests to verify everything works:
+5. Generate training data:
+   ```bash
+   # Quick test dataset (100 examples)
+   python src/generate_dataset.py --num_examples 100 --quick
+
+   # Full training dataset (1000+ examples)
+   python src/generate_dataset.py --num_examples 1000
+   ```
+
+6. Run tests to verify everything works:
    ```bash
    python examples/test_basic_functionality.py
    ```
@@ -92,10 +105,18 @@ neophysics/
 ✅ Comprehensive testing suite
 ✅ Real-time physics simulation working
 
-### Next: Week 2 - Data Generation Pipeline
-⏳ Synthetic training data generator
-⏳ Scene representation format
-⏳ 1000+ text-scene pairs
+### Week 2: COMPLETED ✅
+✅ Comprehensive scene representation system
+✅ Natural language text generation with templates
+✅ Automated physics scenario generation
+✅ Quality validation and filtering
+✅ Large-scale dataset generation (1000+ examples)
+✅ Multiple output formats (JSON, CSV)
+
+### Next: Week 3 - Basic ML Pipeline
+⏳ Text-to-scene model implementation
+⏳ Training loop and optimization
+⏳ Basic evaluation system
 
 ## License
 
