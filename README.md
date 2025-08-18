@@ -1,0 +1,102 @@
+# Learnable Physics Engine
+
+A local 3D physics sandbox where users can create and simulate physics scenarios using natural language commands processed by learned neural networks.
+
+## Project Overview
+
+**Goal**: Build a local application that understands natural language physics commands and creates realistic 3D simulations.
+
+**Example Use Case**: 
+- Input: "create a u-shaped ramp and place a 2kg ball at the top right with 2 m/s velocity"
+- Output: 3D simulation showing realistic physics behavior
+
+## Project Structure
+
+```
+neophysics/
+├── src/                    # Source code
+├── data/                   # Training data and datasets
+├── models/                 # Saved ML models
+├── assets/                 # 3D models, textures, etc.
+├── examples/               # Example scripts and demos
+├── venv/                   # Virtual environment
+├── physics_engine_plan.md  # Detailed project plan
+└── README.md              # This file
+```
+
+## Tech Stack
+
+- **Core**: Python 3.8+
+- **GUI**: Tkinter (built-in)
+- **3D Graphics**: PyBullet (physics simulation)
+- **ML**: PyTorch (local inference)
+- **Math**: NumPy, SciPy
+
+## Development Phases
+
+### Phase 1: Foundation & Basic Physics (Weeks 1-3)
+- [x] Development environment setup
+- [x] Basic physics simulation
+- [ ] Data generation pipeline
+- [ ] Simple ML model
+
+### Phase 2: Core Learning System (Weeks 4-6)
+- [ ] ML-Physics integration
+- [ ] Quality assessment system
+- [ ] Continuous learning
+
+### Phase 3: Advanced Features (Weeks 7-9)
+- [ ] Enhanced object types
+- [ ] Natural language processing
+- [ ] Professional UI
+
+## Getting Started
+
+1. Activate the virtual environment:
+   ```bash
+   # Windows
+   venv\Scripts\activate
+   
+   # Linux/Mac
+   source venv/bin/activate
+   ```
+
+2. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. Run the basic application:
+   ```bash
+   python src/main.py
+   ```
+
+4. Or try the Week 1 demo:
+   ```bash
+   python examples/demo_week1.py
+   ```
+
+5. Run tests to verify everything works:
+   ```bash
+   python examples/test_basic_functionality.py
+   ```
+
+## Current Status
+
+### Week 1: COMPLETED ✅
+✅ Virtual environment created and dependencies installed
+✅ Basic project structure established
+✅ PyBullet physics engine integration
+✅ 3D object creation (spheres, boxes, ramps)
+✅ Tkinter GUI with manual controls
+✅ Comprehensive testing suite
+✅ Real-time physics simulation working
+
+### Next: Week 2 - Data Generation Pipeline
+⏳ Synthetic training data generator
+⏳ Scene representation format
+⏳ 1000+ text-scene pairs
+
+## License
+
+MIT License - See LICENSE file for details

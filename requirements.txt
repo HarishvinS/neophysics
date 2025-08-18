@@ -1,0 +1,25 @@
+# Core ML and Physics Dependencies
+torch>=2.0.0
+transformers>=4.30.0
+sentence-transformers>=2.2.0
+
+# Physics Simulation
+pybullet>=3.2.0
+
+# Graphics and UI
+pygame>=2.5.0
+moderngl>=5.8.0
+
+# Scientific Computing
+numpy>=1.24.0
+scipy>=1.10.0
+matplotlib>=3.7.0
+
+# Data Processing
+datasets>=2.12.0
+pandas>=2.0.0
+
+# Utilities
+tqdm>=4.65.0
+pyyaml>=6.0
+requests>=2.31.0
