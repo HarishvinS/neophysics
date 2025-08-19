@@ -35,10 +35,10 @@ class PhysicsEngine:
             self.physics_client = p.connect(p.DIRECT)
         
         # Set gravity (Earth-like)
-        p.setGravity(0, 0, -9.81)
+        p.setGravity(0, 0, -9.81, physicsClientId=self.physics_client)
         
         # Set time step for simulation
-        p.setTimeStep(1./240.)  # 240 Hz
+        p.setTimeStep(1./240., physicsClientId=self.physics_client)
         
         # Create ground plane
         self.create_ground_plane()
@@ -47,18 +47,20 @@ class PhysicsEngine:
     
     def create_ground_plane(self):
         """Create a static ground plane for objects to land on."""
-        ground_shape = p.createCollisionShape(p.GEOM_PLANE)
+        ground_shape = p.createCollisionShape(p.GEOM_PLANE, physicsClientId=self.physics_client)
         ground_body = p.createMultiBody(
             baseMass=0,  # Static object
             baseCollisionShapeIndex=ground_shape,
-            basePosition=[0, 0, 0]
+            basePosition=[0, 0, 0],
+            physicsClientId=self.physics_client
         )
         
         # Set ground material properties
         p.changeDynamics(
             ground_body, -1,
             lateralFriction=0.7,
-            restitution=0.1
+            restitution=0.1,
+            physicsClientId=self.physics_client
         )
         
         self.objects['ground'] = ground_body
@@ -83,14 +85,16 @@ class PhysicsEngine:
         # Create collision shape
         collision_shape = p.createCollisionShape(
             p.GEOM_SPHERE,
-            radius=radius
+            radius=radius,
+            physicsClientId=self.physics_client
         )
         
         # Create visual shape
         visual_shape = p.createVisualShape(
             p.GEOM_SPHERE,
             radius=radius,
-            rgbaColor=list(color) + [1.0]
+            rgbaColor=list(color) + [1.0],
+            physicsClientId=self.physics_client
         )
         
         # Create multi-body
@@ -98,14 +102,16 @@ class PhysicsEngine:
             baseMass=mass,
             baseCollisionShapeIndex=collision_shape,
             baseVisualShapeIndex=visual_shape,
-            basePosition=position
+            basePosition=position,
+            physicsClientId=self.physics_client
         )
         
         # Set material properties
         p.changeDynamics(
             body_id, -1,
             lateralFriction=lateral_friction,
-            restitution=restitution
+            restitution=restitution,
+            physicsClientId=self.physics_client
         )
         
         # Track object
@@ -134,14 +140,16 @@ class PhysicsEngine:
         # Create collision shape
         collision_shape = p.createCollisionShape(
             p.GEOM_BOX,
-            halfExtents=half_extents
+            halfExtents=half_extents,
+            physicsClientId=self.physics_client
         )
         
         # Create visual shape
         visual_shape = p.createVisualShape(
             p.GEOM_BOX,
             halfExtents=half_extents,
-            rgbaColor=list(color) + [1.0]
+            rgbaColor=list(color) + [1.0],
+            physicsClientId=self.physics_client
         )
         
         # Create multi-body
@@ -149,14 +157,16 @@ class PhysicsEngine:
             baseMass=mass,
             baseCollisionShapeIndex=collision_shape,
             baseVisualShapeIndex=visual_shape,
-            basePosition=position
+            basePosition=position,
+            physicsClientId=self.physics_client
         )
         
         # Set material properties
         p.changeDynamics(
             body_id, -1,
             lateralFriction=lateral_friction,
-            restitution=restitution
+            restitution=restitution,
+            physicsClientId=self.physics_client
         )
         
         # Track object
@@ -186,14 +196,16 @@ class PhysicsEngine:
         # Create collision shape
         collision_shape = p.createCollisionShape(
             p.GEOM_BOX,
-            halfExtents=[size[0]/2, size[1]/2, size[2]/2]
+            halfExtents=[size[0]/2, size[1]/2, size[2]/2],
+            physicsClientId=self.physics_client
         )
         
         # Create visual shape
         visual_shape = p.createVisualShape(
             p.GEOM_BOX,
             halfExtents=[size[0]/2, size[1]/2, size[2]/2],
-            rgbaColor=list(color) + [1.0]
+            rgbaColor=list(color) + [1.0],
+            physicsClientId=self.physics_client
         )
         
         # Calculate orientation (rotation around Y-axis)
@@ -205,14 +217,16 @@ class PhysicsEngine:
             baseCollisionShapeIndex=collision_shape,
             baseVisualShapeIndex=visual_shape,
             basePosition=position,
-            baseOrientation=orientation
+            baseOrientation=orientation,
+            physicsClientId=self.physics_client
         )
         
         # Set material properties
         p.changeDynamics(
             body_id, -1,
             lateralFriction=lateral_friction,
-            restitution=restitution
+            restitution=restitution,
+            physicsClientId=self.physics_client
         )
         
         # Track object
@@ -231,7 +245,8 @@ class PhysicsEngine:
             restitution: New bounciness value
             lateral_friction: New friction value
         """
-        p.changeDynamics(object_id, -1, restitution=restitution, lateralFriction=lateral_friction)
+        p.changeDynamics(object_id, -1, restitution=restitution, 
+                         lateralFriction=lateral_friction, physicsClientId=self.physics_client)
     
     def step_simulation(self, steps=1):
         """
@@ -241,7 +256,7 @@ class PhysicsEngine:
             steps: Number of simulation steps
         """
         for _ in range(steps):
-            p.stepSimulation()
+            p.stepSimulation(physicsClientId=self.physics_client)
     
     def run_simulation(self, duration=5.0, real_time=True):
         """
@@ -254,7 +269,7 @@ class PhysicsEngine:
         steps = int(duration * 240)  # 240 Hz
         
         for i in range(steps):
-            p.stepSimulation()
+            p.stepSimulation(physicsClientId=self.physics_client)
             
             if real_time:
                 time.sleep(1./240.)
@@ -270,8 +285,8 @@ class PhysicsEngine:
             dict: Object state information
         """
         try:
-            pos, orn = p.getBasePositionAndOrientation(object_id)
-            vel, ang_vel = p.getBaseVelocity(object_id)
+            pos, orn = p.getBasePositionAndOrientation(object_id, physicsClientId=self.physics_client)
+            vel, ang_vel = p.getBaseVelocity(object_id, physicsClientId=self.physics_client)
             
             return {
                 'position': np.array(pos),
@@ -294,7 +309,7 @@ class PhysicsEngine:
             if keep_ground and name == 'ground':
                 continue
             
-            p.removeBody(object_id)
+            p.removeBody(object_id, physicsClientId=self.physics_client)
             del self.objects[name]
         
         # Don't reset counter to maintain unique naming
