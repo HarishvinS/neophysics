@@ -6,17 +6,17 @@ Combines text input, ML prediction, and live physics simulation in a unified GUI
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
 import threading
-import time
 import os
-from typing import Optional
+from typing import Optional, Dict
 
 from ml_physics_bridge import MLPhysicsBridge
 from realtime_simulator import RealTimeSimulator
 from physics_validator import PhysicsValidator
 from model_architecture import TextToSceneModel, ModelConfig
-from relational_understanding import RelationalSceneBuilder
-from improved_physics_reasoning import ImprovedPhysicsReasoner
-from dynamic_scene_representation import DynamicPhysicsScene
+from natural_conversation_interface import NaturalConversationInterface, ConversationMode
+from command_disambiguation import CommandDisambiguator
+from multi_step_command_parser import CommandSequence, CommandType
+from dynamic_scene_representation import DynamicPhysicsScene, DynamicPhysicsObject
 
 
 class InteractivePhysicsApp:
@@ -33,9 +33,9 @@ class InteractivePhysicsApp:
         self.bridge = None
         self.simulator = None
         self.validator = None
-        self.relational_builder = None
-        self.reasoner = None
-        
+        self.conversation_interface = None
+        self.disambiguator = None
+
         # State
         self.model_loaded = False
         self.physics_initialized = False
@@ -223,7 +223,7 @@ class InteractivePhysicsApp:
         self.status_log.see(tk.END)
         self.root.update()
     
-    def update_status_indicators(self):
+    def _update_status_indicators(self):
         """Update status indicators in header."""
         if self.model_loaded:
             self.model_status.config(text="🟢 Model: Loaded")
@@ -235,7 +235,7 @@ class InteractivePhysicsApp:
         else:
             self.physics_status.config(text="🔴 Physics: Not Ready")
     
-    def load_model_async(self):
+    def _load_model_async(self):
         """Load model in background thread."""
         def load_model():
             try:
@@ -273,10 +273,9 @@ class InteractivePhysicsApp:
                 # Initialize components
                 self.bridge = MLPhysicsBridge(self.model, use_gui=True)
                 self.simulator = RealTimeSimulator(self.bridge, fps=60)
-                self.validator = PhysicsValidator(self.bridge, self.simulator)
-                # NEW: Initialize advanced components
-                self.relational_builder = RelationalSceneBuilder()
-                self.reasoner = ImprovedPhysicsReasoner()
+                self.validator = PhysicsValidator(self.bridge, self.simulator) # Validator can still be used
+                self.conversation_interface = NaturalConversationInterface()
+                self.disambiguator = CommandDisambiguator(self.conversation_interface.context)
                 
                 self.progress_var.set(80)
                 
@@ -292,7 +291,7 @@ class InteractivePhysicsApp:
                 self.log_message(f"Failed to load model: {str(e)}", "ERROR")
             
             finally:
-                self.update_status_indicators()
+                self._update_status_indicators()
                 self.progress_var.set(0)
         
         # Start loading in background
@@ -313,7 +312,7 @@ class InteractivePhysicsApp:
             self.log_message("Please wait for model to load", "WARNING")
             return
         
-        self.log_message(f"🚀 Executing: '{command}'")
+        self.log_message(f"Processing: '{command}'")
         
         def execute():
             try:
@@ -321,34 +320,55 @@ class InteractivePhysicsApp:
                 if not self.physics_initialized:
                     self.bridge.initialize_physics()
                     self.physics_initialized = True
-                    self.update_status_indicators()
-                
-                # --- NEW LOGIC ---
-                # 1. Use relational builder to create a scene from text
-                self.log_message("1. Parsing command for objects and relationships...")
-                scene = self.relational_builder.build_scene_from_text(command)
-                if not scene.get_object_count():
-                    self.log_message("Could not understand the command to create any objects.", "WARNING")
+                    self._update_status_indicators()
+
+                # 1. Check for ambiguity
+                self.log_message("1. Checking for ambiguity...")
+                disambiguation_response = self.disambiguator.generate_disambiguation_response(command)
+                if disambiguation_response.ambiguities_detected and not disambiguation_response.can_proceed_with_assumptions:
+                    self.log_message(f"Clarification needed: {disambiguation_response.primary_question}", "WARNING")
+                    for suggestion in disambiguation_response.alternative_suggestions:
+                        self.log_message(f"  Suggestion: {suggestion}")
                     return
-                self.log_message(f"   ...found {scene.get_object_count()} objects.")
+                elif disambiguation_response.assumptions_made:
+                    for assumption in disambiguation_response.assumptions_made:
+                        self.log_message(f"Proceeding with assumption: {assumption}")
 
-                # 2. Use the bridge to render this scene in PyBullet
-                self.log_message("2. Creating objects in the physics world...")
-                self.bridge.scene_to_physics(scene)
-                self.log_message("   ...objects created.")
+                # 2. Process with conversational interface
+                self.log_message("2. Processing with conversational interface...")
+                conv_response = self.conversation_interface.process_conversation_input(command)
+                self.log_message(f"System says: {conv_response.content}")
 
-                # 3. Use the new reasoner to predict what will happen
-                self.log_message("3. Reasoning about physics outcomes...")
-                analysis = self.reasoner.analyze_and_predict(scene)
-                self.log_message(f"   ...{analysis['reasoning_summary']}")
-                
-                # 4. Run the real-time simulation
-                duration = float(self.duration_var.get())
-                self.log_message(f"4. Running simulation for {duration}s...")
-                self.start_simulation(duration)
+                # 3. If it's a command, build the scene and simulate
+                if self.conversation_interface.current_mode == ConversationMode.COMMAND_EXECUTION:
+                    self.log_message("3. Building scene from command...")
+                    sequence = self.conversation_interface.command_parser.parse_command_sequence(command)
+                    scene = self._build_scene_from_sequence(sequence)
+
+                    if not scene.get_object_count():
+                        self.log_message("No objects were created from the command.", "WARNING")
+                        return
+
+                    self.log_message(f"4. Rendering {scene.get_object_count()} objects...")
+                    self.bridge.scene_to_physics(scene)
+
+                    self.log_message("5. Reasoning about physics outcomes...")
+                    analysis = self.conversation_interface.physics_reasoner.analyze_and_predict(scene)
+                    self.log_message(f"   ...{analysis['reasoning_summary']}")
+
+                    duration = float(self.duration_var.get())
+                    self.log_message(f"6. Running simulation for {duration}s...")
+                    self.start_simulation(duration)
+                else:
+                    self.log_message("Command was conversational, no simulation to run.")
+                    if conv_response.follow_up_suggestions:
+                        for suggestion in conv_response.follow_up_suggestions:
+                            self.log_message(f"  Suggestion: {suggestion}")
                 
             except Exception as e:
                 self.log_message(f"Execution error: {str(e)}", "ERROR")
+                import traceback
+                traceback.print_exc()
         
         # Run in background thread
         thread = threading.Thread(target=execute, daemon=True)
@@ -387,6 +407,38 @@ class InteractivePhysicsApp:
         # Run in background thread
         thread = threading.Thread(target=validate, daemon=True)
         thread.start()
+
+    def _build_scene_from_sequence(self, sequence: CommandSequence) -> DynamicPhysicsScene:
+        """Builds a DynamicPhysicsScene from a parsed command sequence."""
+        scene = DynamicPhysicsScene(f"scene_{sequence.sequence_id}")
+        created_objects_map: Dict[str, DynamicPhysicsObject] = {}
+
+        # Use the execution order determined by the parser
+        for step_id in sequence.execution_order:
+            step = next((s for s in sequence.steps if s.step_id == step_id), None)
+            if not step:
+                continue
+
+            if step.command_type == CommandType.CREATE:
+                desc = step.parameters.get('object_description')
+                if not desc:
+                    continue
+                
+                self.log_message(f"   - Understanding '{desc}'...")
+                concept = self.conversation_interface.conceptual_reasoner.synthesize_object_concept(desc)
+                
+                # For now, place at a default position. A more advanced version would parse position.
+                new_obj = self.conversation_interface.conceptual_reasoner.create_object_from_concept(concept)
+                
+                scene.add_object(new_obj)
+                created_objects_map[desc] = new_obj
+                self.log_message(f"     > Created '{new_obj.object_id}' (Confidence: {concept['confidence']:.2f})")
+
+            elif step.command_type == CommandType.PLACE:
+                self.log_message(f"   - (Skipping PLACE step for this integration demo)")
+
+        self.conversation_interface.current_scene = scene
+        return scene
 
     def start_simulation(self, duration: float):
         """Helper to start the simulation."""
