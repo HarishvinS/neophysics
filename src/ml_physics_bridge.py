@@ -9,7 +9,7 @@ from typing import Dict, List, Tuple, Optional
 import time
 
 from model_architecture import TextToSceneModel
-from scene_representation import PhysicsScene, PhysicsObject, ObjectType, MaterialType, Vector3
+from dynamic_scene_representation import DynamicPhysicsScene, DynamicPhysicsObject, ObjectType, MaterialType, Vector3
 from physics_engine import PhysicsEngine
 from scene_encoder import SceneDecoder
 
@@ -89,12 +89,12 @@ class MLPhysicsBridge:
             'total_objects': len(physics_objects)
         }
     
-    def scene_to_physics(self, scene: PhysicsScene) -> List[int]:
+    def scene_to_physics(self, scene: DynamicPhysicsScene) -> List[int]:
         """
         Convert a PhysicsScene to PyBullet objects.
         
         Args:
-            scene: PhysicsScene object from ML prediction
+            scene: DynamicPhysicsScene object from a scene builder.
             
         Returns:
             List of PyBullet object IDs
@@ -104,7 +104,7 @@ class MLPhysicsBridge:
         self.physics_to_ml_mapping.clear()
         
         # Process each object in the scene
-        for obj in scene.objects:
+        for obj in scene.objects.values():
             if obj.object_type == ObjectType.PLANE:
                 # Ground plane is already created by physics engine
                 continue
@@ -124,12 +124,12 @@ class MLPhysicsBridge:
         
         return physics_objects
     
-    def create_physics_object(self, obj: PhysicsObject) -> Optional[int]:
+    def create_physics_object(self, obj: DynamicPhysicsObject) -> Optional[int]:
         """
         Create a single physics object from ML prediction.
         
         Args:
-            obj: PhysicsObject from ML prediction
+            obj: DynamicPhysicsObject from scene representation
             
         Returns:
             PyBullet object ID or None if creation failed

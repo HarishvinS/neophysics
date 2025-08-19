@@ -303,7 +303,7 @@ class PhysicsEngine:
     def disconnect(self):
         """Disconnect from PyBullet."""
         if self.physics_client is not None:
-            p.disconnect()
+            p.disconnect(physicsClientId=self.physics_client)
             self.physics_client = None
 
 

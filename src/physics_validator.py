@@ -12,6 +12,8 @@ import json
 from ml_physics_bridge import MLPhysicsBridge
 from realtime_simulator import RealTimeSimulator
 from scene_representation import PhysicsScene, ObjectType
+from relational_understanding import RelationalSceneBuilder
+from relational_understanding import RelationalSceneBuilder
 from model_architecture import TextToSceneModel
 
 
@@ -50,6 +52,7 @@ class PhysicsValidator:
         """
         self.bridge = bridge
         self.simulator = simulator
+        self.relational_builder = RelationalSceneBuilder()
         
         # Validation thresholds
         self.min_objects = 1
@@ -89,7 +92,21 @@ class PhysicsValidator:
         try:
             # Step 1: Get ML prediction and create physics scene
             start_time = time.time()
-            result = self.bridge.predict_and_simulate(text)
+
+            # Use the relational builder to create a scene, just like in the main interface
+            scene = self.relational_builder.build_scene_from_text(text)
+            if not scene.get_object_count():
+                details['errors'].append("Could not parse any objects from the command.")
+                return ValidationResult(
+                    text_input=text, prediction_valid=False, physics_plausible=False,
+                    simulation_successful=False, validation_score=0.0, details=details
+                )
+
+            # Create the physics objects from the scene
+            self.bridge.clear_scene()  # Clear previous objects
+            self.bridge.scene_to_physics(scene)
+
+            result = {'total_objects': scene.get_object_count(), 'prediction_time': time.time() - start_time, 'predicted_scene': scene}
             details['prediction_time'] = time.time() - start_time
             details['objects_created'] = result['total_objects']
             

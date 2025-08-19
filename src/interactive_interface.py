@@ -14,6 +14,9 @@ from ml_physics_bridge import MLPhysicsBridge
 from realtime_simulator import RealTimeSimulator
 from physics_validator import PhysicsValidator
 from model_architecture import TextToSceneModel, ModelConfig
+from relational_understanding import RelationalSceneBuilder
+from improved_physics_reasoning import ImprovedPhysicsReasoner
+from dynamic_scene_representation import DynamicPhysicsScene
 
 
 class InteractivePhysicsApp:
@@ -30,6 +33,8 @@ class InteractivePhysicsApp:
         self.bridge = None
         self.simulator = None
         self.validator = None
+        self.relational_builder = None
+        self.reasoner = None
         
         # State
         self.model_loaded = False
@@ -269,6 +274,9 @@ class InteractivePhysicsApp:
                 self.bridge = MLPhysicsBridge(self.model, use_gui=True)
                 self.simulator = RealTimeSimulator(self.bridge, fps=60)
                 self.validator = PhysicsValidator(self.bridge, self.simulator)
+                # NEW: Initialize advanced components
+                self.relational_builder = RelationalSceneBuilder()
+                self.reasoner = ImprovedPhysicsReasoner()
                 
                 self.progress_var.set(80)
                 
@@ -315,17 +323,29 @@ class InteractivePhysicsApp:
                     self.physics_initialized = True
                     self.update_status_indicators()
                 
-                # Execute command
-                result = self.bridge.predict_and_simulate(command)
+                # --- NEW LOGIC ---
+                # 1. Use relational builder to create a scene from text
+                self.log_message("1. Parsing command for objects and relationships...")
+                scene = self.relational_builder.build_scene_from_text(command)
+                if not scene.get_object_count():
+                    self.log_message("Could not understand the command to create any objects.", "WARNING")
+                    return
+                self.log_message(f"   ...found {scene.get_object_count()} objects.")
+
+                # 2. Use the bridge to render this scene in PyBullet
+                self.log_message("2. Creating objects in the physics world...")
+                self.bridge.scene_to_physics(scene)
+                self.log_message("   ...objects created.")
+
+                # 3. Use the new reasoner to predict what will happen
+                self.log_message("3. Reasoning about physics outcomes...")
+                analysis = self.reasoner.analyze_and_predict(scene)
+                self.log_message(f"   ...{analysis['reasoning_summary']}")
                 
-                self.log_message(f"✅ Created {result['total_objects']} objects in {result['prediction_time']:.3f}s", "SUCCESS")
-                
-                # Run simulation
+                # 4. Run the real-time simulation
                 duration = float(self.duration_var.get())
-                self.log_message(f"🏃 Running simulation for {duration}s...")
-                
-                self.simulation_running = True
-                self.simulator.start_simulation(duration=duration, record=True)
+                self.log_message(f"4. Running simulation for {duration}s...")
+                self.start_simulation(duration)
                 
             except Exception as e:
                 self.log_message(f"Execution error: {str(e)}", "ERROR")
@@ -367,6 +387,11 @@ class InteractivePhysicsApp:
         # Run in background thread
         thread = threading.Thread(target=validate, daemon=True)
         thread.start()
+
+    def start_simulation(self, duration: float):
+        """Helper to start the simulation."""
+        self.simulation_running = True
+        self.simulator.start_simulation(duration=duration, record=True)
     
     def clear_scene(self):
         """Clear the physics scene."""

@@ -90,6 +90,9 @@ neophysics/
 
    # Week 6: Continuous Learning
    python examples/demo_week6.py
+
+   # Week 7: Advanced Physics Understanding
+   python examples/demo_week7.py
    ```
 
 5. Generate training data:
@@ -177,10 +180,17 @@ neophysics/
 ✅ Automated self-improvement loop
 ✅ Continuous learning validation framework
 
-### Next: Week 7 - Advanced Physics Understanding
-⏳ Deep physics reasoning and causal modeling
-⏳ Multi-step physics prediction
-⏳ Complex scenario understanding
+### Week 7: COMPLETED ✅
+✅ Advanced mechanical objects with constraints and compound structures
+✅ Realistic material properties with comprehensive physics databases
+✅ Multi-step physics reasoning and chain reaction prediction
+✅ Deep causal understanding of fundamental physics laws
+✅ Complex scenario analysis and sophisticated interaction modeling
+
+### Next: Week 8 - Natural Language Enhancement
+⏳ Better command understanding and context awareness
+⏳ Multi-step command handling
+⏳ Natural conversation about physics
 
 ## License
 
