@@ -277,7 +277,7 @@ class PhysicsDataset(Dataset):
     Custom PyTorch Dataset for loading and processing physics scene examples.
     It loads examples from a JSON file and encodes them on-the-fly.
     """
-    def __init__(self, dataset_path: str, encoder: SceneEncoder):
+    def __init__(self, dataset_path: str, encoder: SceneEncoder = None):
         """
         Args:
             dataset_path: Path to the dataset JSON file.
@@ -289,18 +289,29 @@ class PhysicsDataset(Dataset):
 
     def _load_examples(self, filepath: str) -> List[Dict[str, any]]:
         """Load dataset from JSON file."""
-        with open(filepath, 'r') as f:
-            data = json.load(f)
-        if 'examples' in data:
-            return data['examples']
-        else:
-            # Handle cases where the file might just be a list of examples
-            return data
+        try:
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+            
+            examples = data.get('examples', data)
+            if not examples:
+                raise ValueError(f"Dataset file {filepath} is empty or has no 'examples'.")
+
+            # Check the first few examples for the action_sequence key to prevent zero-loss training
+            if not all(ex.get('action_sequence') for ex in examples[:min(5, len(examples))]):
+                print("\n" + "="*60)
+                print("⚠️ WARNING: Dataset examples are missing the 'action_sequence' field.")
+                print("This will cause the model's training loss to be zero, resulting in an ineffective model.")
+                print("Please regenerate the dataset using 'python src/generate_dataset.py'")
+                print("="*60 + "\n")
+            return examples
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            raise IOError(f"Failed to load or parse dataset file at {filepath}: {e}")
 
     def __len__(self) -> int:
         return len(self.examples)
 
-    def __getitem__(self, idx: int) -> Tuple[str, Dict[str, torch.Tensor]]:
+    def __getitem__(self, idx: int) -> Tuple[str, str]:
         """
         Retrieves an item from the dataset.
 
@@ -308,18 +319,12 @@ class PhysicsDataset(Dataset):
             idx: The index of the item.
 
         Returns:
-            A tuple containing the text description and the encoded scene tensor dictionary.
+            A tuple containing the text description and the target action sequence string.
         """
         example = self.examples[idx]
         text = example['text_description']
-
-        # Reconstruct and encode the scene
-        scene = PhysicsScene.from_dict(example['scene'])
-        encoded_scene = self.encoder.encode_scene(scene)
-
-        # The model's forward pass needs the text, so we return it.
-        # The collate_fn in the DataLoader will handle batching.
-        return text, encoded_scene
+        action_sequence = example.get('action_sequence', '')
+        return text, action_sequence
 
 
 def test_scene_encoder_decoder():

@@ -43,24 +43,15 @@ class EndToEndTester:
                 print("📦 Loading trained model...")
                 
                 config = ModelConfig()
-                self.model = TextToSceneModel(
-                    hidden_size=config.hidden_size, 
-                    max_objects=config.max_objects
-                )
-                
-                checkpoint = torch.load(model_path, map_location='cpu')
-                self.model.load_state_dict(checkpoint['model_state_dict'])
-                self.model.eval()
+                config.model_path = model_path
+                self.model = TextToSceneModel(config=config)
                 
                 print("✅ Trained model loaded")
             else:
                 print("⚠️ No trained model found, using untrained model")
                 
                 config = ModelConfig()
-                self.model = TextToSceneModel(
-                    hidden_size=config.hidden_size, 
-                    max_objects=config.max_objects
-                )
+                self.model = TextToSceneModel(config=config)
             
             # Initialize components
             print("🔗 Initializing ML-Physics bridge...")

@@ -208,7 +208,6 @@ def demo_relational_understanding():
         # Parse spatial concepts
         concepts = parser.parse_spatial_text(text)
         print(f"    Concepts extracted: {len(concepts)}")
-        
         for concept in concepts:
             print(f"      {concept.primary_object} {concept.spatial_relation.value} {concept.reference_objects}")
         
@@ -234,15 +233,12 @@ def demo_generalization_capabilities():
     if os.path.exists(model_path):
         print("Loading trained model for generalization testing...")
         config = ModelConfig()
-        model = TextToSceneModel(hidden_size=config.hidden_size, max_objects=config.max_objects)
-        
-        checkpoint = torch.load(model_path, map_location='cpu')
-        model.load_state_dict(checkpoint['model_state_dict'])
-        model.eval()
+        config.model_path = model_path
+        model = TextToSceneModel(config=config)
     else:
         print("Using untrained model for generalization testing...")
         config = ModelConfig()
-        model = TextToSceneModel(hidden_size=config.hidden_size, max_objects=config.max_objects)
+        model = TextToSceneModel(config=config)
     
     # Create generalization tester
     tester = GeneralizationTester(model)

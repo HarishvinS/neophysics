@@ -94,7 +94,7 @@ class PhysicsObject:
     scale: Vector3
     mass: float
     material: MaterialType
-    material_properties: MaterialProperties
+    material_properties: MaterialProperties = None
     initial_velocity: Vector3 = None
     initial_angular_velocity: Vector3 = None
     color: Tuple[float, float, float] = (0.5, 0.5, 0.5)
@@ -252,6 +252,7 @@ class TrainingExample:
     example_id: str
     text_description: str
     scene: PhysicsScene
+    action_sequence: str = ""  # New field for seq2seq target
     metadata: Dict[str, Any] = None
     
     def __post_init__(self):
@@ -265,6 +266,7 @@ class TrainingExample:
             'example_id': self.example_id,
             'text_description': self.text_description,
             'scene': self.scene.to_dict(),
+            'action_sequence': self.action_sequence,
             'metadata': self.metadata
         }
     
@@ -275,6 +277,7 @@ class TrainingExample:
             example_id=data['example_id'],
             text_description=data['text_description'],
             scene=PhysicsScene.from_dict(data['scene']),
+            action_sequence=data.get('action_sequence', ''),
             metadata=data.get('metadata', {})
         )
 

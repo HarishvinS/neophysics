@@ -28,16 +28,13 @@ def demo_ml_physics_bridge():
     if os.path.exists(model_path):
         print("Loading trained model...")
         config = ModelConfig()
-        model = TextToSceneModel(hidden_size=config.hidden_size, max_objects=config.max_objects)
-        
-        checkpoint = torch.load(model_path, map_location='cpu')
-        model.load_state_dict(checkpoint['model_state_dict'])
-        model.eval()
+        config.model_path = model_path
+        model = TextToSceneModel(config=config)
         print("✅ Trained model loaded")
     else:
         print("Using untrained model for demo...")
         config = ModelConfig()
-        model = TextToSceneModel(hidden_size=config.hidden_size, max_objects=config.max_objects)
+        model = TextToSceneModel(config=config)
     
     # Create bridge
     bridge = MLPhysicsBridge(model, use_gui=False)  # No GUI for demo
@@ -82,14 +79,13 @@ def demo_real_time_simulation():
     
     # Setup system
     config = ModelConfig()
-    model = TextToSceneModel(hidden_size=config.hidden_size, max_objects=config.max_objects)
+    model = TextToSceneModel(config=config)
     
     # Try to load trained model
     model_path = "models/trained_model/final_model.pth"
     if os.path.exists(model_path):
-        checkpoint = torch.load(model_path, map_location='cpu')
-        model.load_state_dict(checkpoint['model_state_dict'])
-        model.eval()
+        config.model_path = model_path
+        model = TextToSceneModel(config=config)
     
     bridge = MLPhysicsBridge(model, use_gui=False)
     simulator = RealTimeSimulator(bridge, fps=30)  # Lower FPS for demo
@@ -154,14 +150,13 @@ def demo_physics_validation():
     
     # Setup system
     config = ModelConfig()
-    model = TextToSceneModel(hidden_size=config.hidden_size, max_objects=config.max_objects)
+    model = TextToSceneModel(config=config)
     
     # Try to load trained model
     model_path = "models/trained_model/final_model.pth"
     if os.path.exists(model_path):
-        checkpoint = torch.load(model_path, map_location='cpu')
-        model.load_state_dict(checkpoint['model_state_dict'])
-        model.eval()
+        config.model_path = model_path
+        model = TextToSceneModel(config=config)
     
     bridge = MLPhysicsBridge(model, use_gui=False)
     simulator = RealTimeSimulator(bridge, fps=60)
@@ -215,13 +210,12 @@ def demo_interactive_capabilities():
     
     # Load system
     config = ModelConfig()
-    model = TextToSceneModel(hidden_size=config.hidden_size, max_objects=config.max_objects)
+    model = TextToSceneModel(config=config)
     
     model_path = "models/trained_model/final_model.pth"
     if os.path.exists(model_path):
-        checkpoint = torch.load(model_path, map_location='cpu')
-        model.load_state_dict(checkpoint['model_state_dict'])
-        model.eval()
+        config.model_path = model_path
+        model = TextToSceneModel(config=config)
         print("✅ Trained model loaded")
     else:
         print("⚠️ Using untrained model")

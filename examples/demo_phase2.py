@@ -138,7 +138,7 @@ def demo_dataset_analysis():
     
     # Load the generated dataset
     try:
-        with open('data/physics_training_dataset_text.json', 'r') as f:
+        with open('data/physics_dataset_text.json', 'r') as f:
             dataset = json.load(f)
         
         examples = dataset['examples']

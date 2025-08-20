@@ -8,17 +8,14 @@ from tkinter import ttk, scrolledtext, messagebox
 import threading
 import time
 import os
-from typing import Optional, Dict
+from typing import Optional, Dict, List, Any
+import re
 
 from ml_physics_bridge import MLPhysicsBridge
 from realtime_simulator import RealTimeSimulator
 from physics_validator import PhysicsValidator
 from model_architecture import TextToSceneModel, ModelConfig
-from natural_conversation_interface import NaturalConversationInterface, ConversationMode
-from command_disambiguation import CommandDisambiguator
-from multi_step_command_parser import CommandSequence, CommandType
-from relational_understanding import RelationalSceneBuilder
-from dynamic_scene_representation import DynamicPhysicsScene, DynamicPhysicsObject
+from dynamic_scene_representation import DynamicPhysicsScene, DynamicPhysicsObject, ObjectType, MaterialType, Vector3
 
 
 class InteractivePhysicsApp:
@@ -35,9 +32,6 @@ class InteractivePhysicsApp:
         self.bridge = None
         self.simulator = None
         self.validator = None
-        self.conversation_interface = None
-        self.disambiguator = None
-        self.relational_builder = None
 
         # State
         self.model_loaded = False
@@ -251,14 +245,8 @@ class InteractivePhysicsApp:
                     self.log_message("Loading trained model...")
                     
                     config = ModelConfig()
-                    self.model = TextToSceneModel(
-                        hidden_size=config.hidden_size, 
-                        max_objects=config.max_objects
-                    )
-                    
-                    import torch
-                    checkpoint = torch.load(model_path, map_location='cpu')
-                    self.model.load_state_dict(checkpoint['model_state_dict'])
+                    config.model_path = model_path
+                    self.model = TextToSceneModel(config=config)
                     self.model.eval()
                     
                     self.log_message("✅ Trained model loaded successfully!", "SUCCESS")
@@ -266,21 +254,18 @@ class InteractivePhysicsApp:
                     self.log_message("No trained model found, using untrained model", "WARNING")
                     
                     config = ModelConfig()
-                    self.model = TextToSceneModel(
-                        hidden_size=config.hidden_size, 
-                        max_objects=config.max_objects
-                    )
+                    self.model = TextToSceneModel(config=config)
                 
                 self.progress_var.set(60)
                 
                 # Initialize components
-                self.bridge = MLPhysicsBridge(self.model, use_gui=True)
-                self.simulator = RealTimeSimulator(self.bridge, fps=60)
-                self.validator = PhysicsValidator(self.bridge, self.simulator) # Validator can still be used
-                self.conversation_interface = NaturalConversationInterface()
-                self.disambiguator = CommandDisambiguator(self.conversation_interface.context)
-                self.relational_builder = RelationalSceneBuilder()
+                self.bridge = MLPhysicsBridge(self.model, use_gui=True) # Create the bridge
+                self.bridge.initialize_physics() # Immediately initialize the physics engine
+                self.physics_initialized = True
                 
+                # Now that the physics engine is ready, we can safely create the simulator and validator
+                self.simulator = RealTimeSimulator(self.bridge, fps=60)
+                self.validator = PhysicsValidator(self.bridge, self.simulator)
                 self.progress_var.set(80)
                 
                 # Add simulator callbacks
@@ -326,50 +311,25 @@ class InteractivePhysicsApp:
                     self.physics_initialized = True
                     self._update_status_indicators()
 
-                # 1. Process with conversational interface to determine intent first
-                self.log_message("1. Processing with conversational interface...")
-                conv_response = self.conversation_interface.process_conversation_input(command)
-                self.log_message(f"System says: {conv_response.content}")
+                # 1. Get action sequence from the new model
+                self.log_message("1. Generating action sequence from command...")
+                action_sequence_str = self.model.predict_action_sequence(command)
+                self.log_message(f"   > Predicted sequence: {action_sequence_str}")
 
-                # 2. If it's a command, check for ambiguity before executing
-                if self.conversation_interface.current_mode == ConversationMode.COMMAND_EXECUTION:
-                    self.log_message("2. Command detected, checking for ambiguity...")
-                    disambiguation_response = self.disambiguator.generate_disambiguation_response(command)
-                    
-                    if disambiguation_response.ambiguities_detected and not disambiguation_response.can_proceed_with_assumptions:
-                        self.log_message(f"Clarification needed: {disambiguation_response.primary_question}", "WARNING")
-                        for suggestion in disambiguation_response.alternative_suggestions:
-                            self.log_message(f"  Suggestion: {suggestion}")
-                        return
-                    elif disambiguation_response.assumptions_made:
-                        for assumption in disambiguation_response.assumptions_made:
-                            self.log_message(f"Proceeding with assumption: {assumption}")
+                # 2. Build the scene from this action sequence
+                self.log_message("2. Building scene from action sequence...")
+                scene = self._build_scene_from_action_sequence(action_sequence_str)
 
-                    # 3. Build the scene and simulate
-                    self.log_message("3. Building scene from command...")
-                    sequence = self.conversation_interface.command_parser.parse_command_sequence(command)
-                    scene = self._build_scene_from_sequence(sequence)
+                if not scene.get_object_count():
+                    self.log_message("No objects were created from the command.", "WARNING")
+                    return
 
-                    if not scene.get_object_count():
-                        self.log_message("No objects were created from the command.", "WARNING")
-                        return
+                self.log_message(f"3. Rendering {scene.get_object_count()} objects...")
+                self.bridge.scene_to_physics(scene)
 
-                    self.log_message(f"4. Rendering {scene.get_object_count()} objects...")
-                    self.bridge.scene_to_physics(scene)
-
-                    self.log_message("5. Reasoning about physics outcomes...")
-                    analysis = self.conversation_interface.physics_reasoner.analyze_and_predict(scene)
-                    self.log_message(f"   ...{analysis['reasoning_summary']}")
-
-                    duration = float(self.duration_var.get())
-                    self.log_message(f"6. Running simulation for {duration}s...")
-                    self.start_simulation(duration)
-                else:
-                    # Handle conversational modes without running the simulation pipeline
-                    self.log_message("Command was conversational, no simulation to run.")
-                    if conv_response.follow_up_suggestions:
-                        for suggestion in conv_response.follow_up_suggestions:
-                            self.log_message(f"  Suggestion: {suggestion}")
+                duration = float(self.duration_var.get())
+                self.log_message(f"4. Running simulation for {duration}s...")
+                self.start_simulation(duration)
                 
             except Exception as e:
                 self.log_message(f"Execution error: {str(e)}", "ERROR")
@@ -414,19 +374,72 @@ class InteractivePhysicsApp:
         thread = threading.Thread(target=validate, daemon=True)
         thread.start()
 
-    def _build_scene_from_sequence(self, sequence: CommandSequence) -> DynamicPhysicsScene:
-        """Builds a DynamicPhysicsScene from a parsed command sequence."""
-        command_text = sequence.original_text
-        self.log_message(f"   - Building scene from '{command_text}' using RelationalSceneBuilder...")
+    def _parse_action_sequence(self, seq_str: str) -> List[Dict[str, Any]]:
+        """Parses the action sequence string from the model into a list of action dicts."""
+        actions = []
+        # Split by semicolon to get individual actions
+        action_strs = [s.strip() for s in seq_str.split(';') if s.strip()]
         
-        # Use the more powerful relational builder which can handle complex commands
-        scene = self.relational_builder.build_scene_from_text(command_text)
-        
-        # Log created objects for user feedback
-        for obj in scene.objects.values():
-            self.log_message(f"     > Created '{obj.object_id}' with material '{obj.material.value}'")
+        for action_str in action_strs:
+            # Split by first space to get action type and parameters
+            parts = action_str.split(' ', 1)
+            if len(parts) < 2:
+                continue
+                
+            action_type = parts[0].upper()
+            params_str = parts[1]
             
-        self.conversation_interface.current_scene = scene
+            params = {}
+            # Use regex to find key=value pairs, handling tuples properly
+            param_matches = re.finditer(r'(\w+)=(\([^)]*\)|[^\s]+)', params_str)
+            for p_match in param_matches:
+                key = p_match.group(1)
+                value = p_match.group(2).strip()
+                params[key] = value
+            
+            if action_type and params:
+                actions.append({'type': action_type, 'params': params})
+        return actions
+
+    def _build_scene_from_action_sequence(self, action_sequence_str: str) -> DynamicPhysicsScene:
+        """Builds a DynamicPhysicsScene from a predicted action sequence string."""
+        scene = DynamicPhysicsScene("predicted_scene")
+        actions = self._parse_action_sequence(action_sequence_str)
+        
+        for action in actions:
+            if action['type'] == 'CREATE':
+                params = action['params']
+                try:
+                    # Safely parse tuple values
+                    pos_tuple = eval(params.get('pos', '(0,0,1)'))
+                    rot_tuple = eval(params.get('rot', '(0,0,0)'))
+                    scale_tuple = eval(params.get('scale', '(0.5,0.5,0.5)'))
+                    
+                    # Extract material name (remove color if present)
+                    material_str = params.get('material', 'wood')
+                    if ' ' in material_str:
+                        material_str = material_str.split()[0]
+
+                    obj = DynamicPhysicsObject(
+                        object_id=params.get('id', f"obj_{len(scene.objects)}"),
+                        object_type=ObjectType(params.get('type', 'box')),
+                        position=Vector3(*pos_tuple),
+                        rotation=Vector3(*rot_tuple),
+                        scale=Vector3(*scale_tuple),
+                        mass=float(params.get('mass', 1.0)),
+                        material=MaterialType(material_str)
+                    )
+                    scene.add_object(obj)
+                    self.log_message(f"     > Created '{obj.object_id}' ({obj.object_type.value})")
+                except Exception as e:
+                    self.log_message(f"     > ⚠️ Failed to create object from params {params}: {e}", "WARNING")
+            
+            elif action['type'] == 'RELATE':
+                # Placeholder for future relationship handling
+                params = action['params']
+                self.log_message(f"     > Relationship (not yet implemented): {params.get('subject_id')} "
+                                 f"{params.get('type')} {params.get('target_id')}")
+
         return scene
 
     def start_simulation(self, duration: float):

@@ -67,7 +67,7 @@ def demo_active_learning():
     
     # Create model and components
     config = ModelConfig()
-    model = TextToSceneModel(hidden_size=config.hidden_size, max_objects=config.max_objects)
+    model = TextToSceneModel(config=config)
     
     feedback_collector = FeedbackCollector()
     coordinator = ActiveLearningCoordinator(model, feedback_collector)
@@ -179,7 +179,7 @@ def demo_self_improvement_loop():
     
     # Create model and improvement loop
     config = ModelConfig()
-    model = TextToSceneModel(hidden_size=config.hidden_size, max_objects=config.max_objects)
+    model = TextToSceneModel(config=config)
     
     improvement_loop = SelfImprovementLoop(model)
     

@@ -5,13 +5,13 @@ Converts ML model predictions into PyBullet physics simulations.
 
 import torch
 import numpy as np
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, Any
 import time
+import re
 
 from model_architecture import TextToSceneModel
 from dynamic_scene_representation import DynamicPhysicsScene, DynamicPhysicsObject, ObjectType, MaterialType, Vector3
 from physics_engine import PhysicsEngine
-from scene_encoder import SceneDecoder
 
 
 class MLPhysicsBridge:
@@ -28,7 +28,6 @@ class MLPhysicsBridge:
         self.model = model
         self.use_gui = use_gui
         self.physics_engine = None
-        self.decoder = SceneDecoder(max_objects=model.max_objects)
         
         # Object ID mapping for tracking
         self.ml_to_physics_mapping = {}
@@ -64,11 +63,15 @@ class MLPhysicsBridge:
         
         # Get ML prediction
         start_time = time.time()
-        predicted_scene = self.model.predict_scene(text)
+        action_sequence_str = self.model.predict_action_sequence(text)
         prediction_time = time.time() - start_time
         
         print(f"⚡ ML prediction completed in {prediction_time:.3f}s")
+        print(f"   > Predicted sequence: {action_sequence_str}")
         
+        # Build scene from action sequence
+        predicted_scene = self._build_scene_from_action_sequence(action_sequence_str)
+
         # Convert to physics simulation
         start_time = time.time()
         physics_objects = self.scene_to_physics(predicted_scene)
@@ -88,6 +91,60 @@ class MLPhysicsBridge:
             'conversion_time': conversion_time,
             'total_objects': len(physics_objects)
         }
+
+    def _parse_action_sequence(self, seq_str: str) -> List[Dict[str, Any]]:
+        """Parses the action sequence string from the model into a list of action dicts."""
+        actions = []
+        # Use regex to find all "ACTION key=value ...;" blocks
+        action_patterns = re.finditer(r"(\w+)\s+(.*?);", seq_str)
+        for match in action_patterns:
+            action_type = match.group(1).upper()
+            params_str = match.group(2)
+            
+            params = {}
+            # Use regex to find key=value pairs, handling tuples in values
+            param_matches = re.finditer(r'(\w+)=((?:\([^)]*\))|(?:\S+))', params_str)
+            for p_match in param_matches:
+                key = p_match.group(1)
+                value = p_match.group(2).strip()
+                params[key] = value
+            
+            if action_type and params:
+                actions.append({'type': action_type, 'params': params})
+        return actions
+
+    def _build_scene_from_action_sequence(self, action_sequence_str: str) -> DynamicPhysicsScene:
+        """Builds a DynamicPhysicsScene from a predicted action sequence string."""
+        scene = DynamicPhysicsScene("predicted_scene")
+        actions = self._parse_action_sequence(action_sequence_str)
+        
+        for action in actions:
+            if action['type'] == 'CREATE':
+                params = action['params']
+                try:
+                    # Safely parse tuple values
+                    pos_tuple = eval(params.get('pos', '(0,0,1)'))
+                    rot_tuple = eval(params.get('rot', '(0,0,0)'))
+                    scale_tuple = eval(params.get('scale', '(0.5,0.5,0.5)'))
+
+                    obj = DynamicPhysicsObject(
+                        object_id=params.get('id', f"obj_{len(scene.objects)}"),
+                        object_type=ObjectType(params.get('type', 'box')),
+                        position=Vector3(*pos_tuple),
+                        rotation=Vector3(*rot_tuple),
+                        scale=Vector3(*scale_tuple),
+                        mass=float(params.get('mass', 1.0)),
+                        material=MaterialType(params.get('material', 'wood'))
+                    )
+                    scene.add_object(obj)
+                except Exception as e:
+                    print(f"     > ⚠️ Failed to create object from params {params}: {e}")
+            
+            elif action['type'] == 'RELATE':
+                # Placeholder for future relationship handling
+                params = action['params']
+                print(f"     > Relationship (not yet implemented): {params.get('subject_id')} {params.get('type')} {params.get('target_id')}")
+        return scene
     
     def scene_to_physics(self, scene: DynamicPhysicsScene) -> List[int]:
         """

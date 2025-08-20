@@ -22,10 +22,7 @@ def demo_model_architecture():
     
     # Create model
     config = ModelConfig()
-    model = TextToSceneModel(
-        hidden_size=config.hidden_size,
-        max_objects=config.max_objects
-    )
+    model = TextToSceneModel(config=config)
     
     print(f"Model Configuration:")
     print(f"  Hidden size: {config.hidden_size}")
@@ -41,21 +38,11 @@ def demo_model_architecture():
     
     print(f"\nTesting forward pass with {len(test_texts)} examples...")
     
-    with torch.no_grad():
-        predictions = model(test_texts)
-    
-    print("Output tensor shapes:")
-    for key, tensor in predictions.items():
-        print(f"  {key}: {tensor.shape}")
-    
     # Test scene prediction
     print(f"\nTesting scene prediction...")
-    predicted_scene = model.predict_scene("create a ball on a ramp")
-    objects = [obj for obj in predicted_scene.objects if obj.object_type.value != 'plane']
-    
-    print(f"Predicted scene with {len(objects)} objects:")
-    for i, obj in enumerate(objects):
-        print(f"  {i+1}. {obj.object_type.value} ({obj.material.value}) at {obj.position.to_list()}")
+    action_sequence = model.predict_action_sequence("create a ball on a ramp")
+    print(f"  Input: 'create a ball on a ramp'")
+    print(f"  > Predicted Action Sequence: {action_sequence}")
 
 
 def demo_training_pipeline():
@@ -112,10 +99,7 @@ def demo_evaluation_system():
     
     # Create model
     config = ModelConfig()
-    model = TextToSceneModel(hidden_size=config.hidden_size, max_objects=config.max_objects)
-    
-    # Create evaluator
-    evaluator = ModelEvaluator(model, max_objects=config.max_objects)
+    model = TextToSceneModel(config=config)
     
     # Test evaluation on sample texts
     test_texts = [
@@ -124,6 +108,9 @@ def demo_evaluation_system():
         "place two boxes next to each other"
     ]
     
+    # Create evaluator with the model
+    evaluator = ModelEvaluator(model, max_objects=config.max_objects)
+
     print(f"Evaluating model on {len(test_texts)} examples...")
     results = evaluator.evaluate_text_examples(test_texts)
     
@@ -153,11 +140,8 @@ def demo_end_to_end():
         
         # Load model
         config = ModelConfig()
-        model = TextToSceneModel(hidden_size=config.hidden_size, max_objects=config.max_objects)
-        
-        checkpoint = torch.load(model_path, map_location='cpu')
-        model.load_state_dict(checkpoint['model_state_dict'])
-        model.eval()
+        config.model_path = model_path
+        model = TextToSceneModel(config=config)
         
         print("✅ Pre-trained model loaded successfully!")
         
@@ -176,17 +160,8 @@ def demo_end_to_end():
             for i, text in enumerate(demo_inputs):
                 print(f"\n{i+1}. Input: '{text}'")
                 
-                # Get prediction
-                predicted_scene = model.predict_scene(text)
-                
-                # Show results
-                objects = [obj for obj in predicted_scene.objects if obj.object_type.value != 'plane']
-                print(f"   Output: {len(objects)} objects predicted")
-                
-                for j, obj in enumerate(objects[:2]):  # Show first 2 objects
-                    print(f"     {j+1}. {obj.object_type.value} ({obj.material.value})")
-                    print(f"        Position: ({obj.position.x:.2f}, {obj.position.y:.2f}, {obj.position.z:.2f})")
-                    print(f"        Mass: {obj.mass:.2f}kg")
+                action_sequence = model.predict_action_sequence(text)
+                print(f"   > Predicted Action Sequence: {action_sequence}")
     
     else:
         print("No pre-trained model found.")
@@ -196,12 +171,12 @@ def demo_end_to_end():
         # Show what the pipeline would do
         print("\nDemonstrating untrained model behavior...")
         config = ModelConfig()
-        model = TextToSceneModel(hidden_size=config.hidden_size, max_objects=config.max_objects)
+        model = TextToSceneModel(config=config)
         
         with torch.no_grad():
-            predicted_scene = model.predict_scene("create a ball on a ramp")
-            objects = [obj for obj in predicted_scene.objects if obj.object_type.value != 'plane']
-            print(f"Untrained model predicts {len(objects)} objects (random initialization)")
+            action_sequence = model.predict_action_sequence("create a ball on a ramp")
+            print(f"  Untrained model prediction for 'create a ball on a ramp':")
+            print(f"  > {action_sequence}")
 
 
 def demo_training_results():

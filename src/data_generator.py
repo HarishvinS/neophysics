@@ -91,57 +91,55 @@ class ScenarioGenerator:
             weights=list(self.OBJECT_WEIGHTS.values())
         )[0]
     
+    def _create_random_object(self, obj_id_prefix: str, index: int,
+                              pos_range: Tuple[Tuple[float, float], Tuple[float, float], Tuple[float, float]],
+                              mass_range: Tuple[float, float] = (0.5, 5.0),
+                              initial_velocity: Vector3 = None) -> PhysicsObject:
+        """Helper to create a single random object."""
+        obj_type = self._choose_random_object_type()
+        material = self._choose_random_material()
+
+        x = random.uniform(*pos_range[0])
+        y = random.uniform(*pos_range[1])
+        z = random.uniform(*pos_range[2])
+
+        mass = random.uniform(*mass_range)
+
+        if obj_type == ObjectType.SPHERE:
+            radius = random.uniform(0.05, 0.2)
+            scale = Vector3(radius, radius, radius)
+        else:
+            size = random.uniform(0.1, 0.3)
+            scale = Vector3(size, size, size)
+
+        return PhysicsObject(
+            object_id=f"{obj_id_prefix}_{index}",
+            object_type=obj_type,
+            position=Vector3(x, y, z),
+            rotation=Vector3.zero(),
+            scale=scale,
+            mass=mass,
+            material=material,
+            initial_velocity=initial_velocity,
+            color=self._random_color()
+        )
+
     def _generate_simple_drop(self, scene_id: str) -> PhysicsScene:
         """Generate a simple dropping scenario."""
         builder = SceneBuilder(scene_id)
         builder.add_ground_plane()
-        
-        # Add 1-3 objects at different heights
+
         num_objects = random.randint(1, 3)
-        
+        pos_range = ((-2, 2), (-2, 2), (1, 4))
+
         for i in range(num_objects):
-            obj_type = self._choose_random_object_type()
-            material = self._choose_random_material()
-            
-            # Random position (spread out horizontally, varying heights)
-            x = random.uniform(-2, 2)
-            y = random.uniform(-2, 2)
-            z = random.uniform(1, 4)
-            
-            # Random mass and size
-            mass = random.uniform(0.5, 5.0)
-            
-            if obj_type == ObjectType.SPHERE:
-                radius = random.uniform(0.05, 0.2)
-                builder.scene.add_object(PhysicsObject(
-                    object_id=f"sphere_{i}",
-                    object_type=obj_type,
-                    position=Vector3(x, y, z),
-                    rotation=Vector3.zero(),
-                    scale=Vector3(radius, radius, radius),
-                    mass=mass,
-                    material=material,
-                    material_properties=None,
-                    color=self._random_color()
-                ))
-            elif obj_type == ObjectType.BOX:
-                size = random.uniform(0.1, 0.3)
-                builder.scene.add_object(PhysicsObject(
-                    object_id=f"box_{i}",
-                    object_type=obj_type,
-                    position=Vector3(x, y, z),
-                    rotation=Vector3.zero(),
-                    scale=Vector3(size, size, size),
-                    mass=mass,
-                    material=material,
-                    material_properties=None,
-                    color=self._random_color()
-                ))
-        
+            obj = self._create_random_object("obj", i, pos_range)
+            builder.scene.add_object(obj)
+
         scene = builder.get_scene()
         scene.tags = ["drop", "gravity", "falling"]
         return scene
-    
+
     def _generate_ramp_rolling(self, scene_id: str) -> PhysicsScene:
         """Generate a ramp rolling scenario."""
         builder = SceneBuilder(scene_id)
@@ -162,30 +160,16 @@ class ScenarioGenerator:
         num_objects = random.randint(1, 2)
         
         for i in range(num_objects):
-            # Prefer spheres for rolling
-            obj_type = ObjectType.SPHERE if random.random() < 0.7 else self._choose_random_object_type()
-            material = self._choose_random_material()
-            
             # Position on the high end of the ramp
             x = random.uniform(-ramp_length/2 + 0.2, -ramp_length/4)
             y = random.uniform(-ramp_width/3, ramp_width/3)
             z = random.uniform(1.5, 2.5)
             
-            mass = random.uniform(0.5, 3.0)
-            
-            if obj_type == ObjectType.SPHERE:
-                radius = random.uniform(0.05, 0.15)
-                builder.scene.add_object(PhysicsObject(
-                    object_id=f"rolling_sphere_{i}",
-                    object_type=obj_type,
-                    position=Vector3(x, y, z),
-                    rotation=Vector3.zero(),
-                    scale=Vector3(radius, radius, radius),
-                    mass=mass,
-                    material=material,
-                    material_properties=None,
-                    color=self._random_color()
-                ))
+            obj = self._create_random_object("rolling_obj", i, ((x, x), (y, y), (z, z)), (0.5, 3.0))
+            # Prefer spheres for rolling
+            if random.random() < 0.7:
+                obj.object_type = ObjectType.SPHERE
+            builder.scene.add_object(obj)
         
         scene = builder.get_scene()
         scene.tags = ["ramp", "rolling", "incline", "gravity"]
@@ -197,53 +181,26 @@ class ScenarioGenerator:
         builder.add_ground_plane()
         
         # Add target object (stationary)
-        target_type = self._choose_random_object_type()
-        target_material = self._choose_random_material()
-        
         target_x = random.uniform(-1, 1)
         target_y = random.uniform(-1, 1)
-        
-        if target_type == ObjectType.SPHERE:
-            radius = random.uniform(0.1, 0.2)
-            builder.scene.add_object(PhysicsObject(
-                object_id="target",
-                object_type=target_type,
-                position=Vector3(target_x, target_y, 0.5),
-                rotation=Vector3.zero(),
-                scale=Vector3(radius, radius, radius),
-                mass=random.uniform(1.0, 3.0),
-                material=target_material,
-                material_properties=None,
-                color=self._random_color()
-            ))
+        target_pos_range = ((target_x, target_x), (target_y, target_y), (0.5, 0.5))
+        target_obj = self._create_random_object("target", 0, target_pos_range, (1.0, 3.0))
+        builder.scene.add_object(target_obj)
         
         # Add moving object (will collide)
-        moving_type = ObjectType.SPHERE  # Spheres roll better
-        moving_material = self._choose_random_material()
-        
         # Position it higher and to the side
         moving_x = target_x + random.uniform(-3, -2)  # To the left
         moving_y = target_y + random.uniform(-0.5, 0.5)
-        
-        radius = random.uniform(0.08, 0.15)
-        moving_obj = PhysicsObject(
-            object_id="projectile",
-            object_type=moving_type,
-            position=Vector3(moving_x, moving_y, 2.0),
-            rotation=Vector3.zero(),
-            scale=Vector3(radius, radius, radius),
-            mass=random.uniform(0.5, 2.0),
-            material=moving_material,
-            material_properties=None,
-            initial_velocity=Vector3(random.uniform(2, 5), 0, 0),  # Initial push
-            color=self._random_color()
-        )
+        moving_pos_range = ((moving_x, moving_x), (moving_y, moving_y), (2.0, 2.0))
+        initial_velocity = Vector3(random.uniform(2, 5), 0, 0)
+        moving_obj = self._create_random_object("projectile", 0, moving_pos_range, (0.5, 2.0), initial_velocity)
+        moving_obj.object_type = ObjectType.SPHERE # Spheres are better projectiles
         builder.scene.add_object(moving_obj)
         
         scene = builder.get_scene()
         scene.tags = ["collision", "impact", "momentum"]
         return scene
-    
+
     def _generate_bouncing(self, scene_id: str) -> PhysicsScene:
         """Generate a bouncing scenario."""
         builder = SceneBuilder(scene_id)
@@ -253,27 +210,13 @@ class ScenarioGenerator:
         num_objects = random.randint(1, 3)
         
         for i in range(num_objects):
+            pos_range = ((-2, 2), (-2, 2), (2, 5)) # Higher drop
+            obj = self._create_random_object("bouncy_obj", i, pos_range, (0.3, 1.5))
+            obj.object_type = ObjectType.SPHERE # Spheres bounce well
             # Prefer bouncy materials
-            material = MaterialType.BOUNCY if random.random() < 0.4 else MaterialType.RUBBER
-            
-            x = random.uniform(-2, 2)
-            y = random.uniform(-2, 2)
-            z = random.uniform(2, 5)  # Higher drop for more bouncing
-            
-            radius = random.uniform(0.08, 0.15)
-            mass = random.uniform(0.3, 1.5)  # Lighter for more bouncing
-            
-            builder.scene.add_object(PhysicsObject(
-                object_id=f"bouncy_ball_{i}",
-                object_type=ObjectType.SPHERE,
-                position=Vector3(x, y, z),
-                rotation=Vector3.zero(),
-                scale=Vector3(radius, radius, radius),
-                mass=mass,
-                material=material,
-                material_properties=None,
-                color=self._random_color()
-            ))
+            if random.random() < 0.4:
+                obj.material = MaterialType.BOUNCY
+            builder.scene.add_object(obj)
         
         scene = builder.get_scene()
         scene.tags = ["bouncing", "elastic", "restitution"]
@@ -292,39 +235,17 @@ class ScenarioGenerator:
         num_objects = random.randint(3, 6)
         
         for i in range(num_objects):
-            obj_type = self._choose_random_object_type()
-            material = self._choose_random_material()
-            
             # Spread objects around the scene
             if i < 2:  # First two on the ramp
                 x = random.uniform(-1.5, -0.5)
                 y = random.uniform(-0.5, 0.5)
                 z = random.uniform(1.5, 2.5)
+                pos_range = ((x, x), (y, y), (z, z))
             else:  # Others scattered around
-                x = random.uniform(-3, 3)
-                y = random.uniform(-3, 3)
-                z = random.uniform(0.5, 3)
+                pos_range = ((-3, 3), (-3, 3), (0.5, 3))
             
-            mass = random.uniform(0.5, 4.0)
-            
-            if obj_type == ObjectType.SPHERE:
-                radius = random.uniform(0.05, 0.18)
-                scale = Vector3(radius, radius, radius)
-            else:
-                size = random.uniform(0.1, 0.25)
-                scale = Vector3(size, size, size)
-            
-            builder.scene.add_object(PhysicsObject(
-                object_id=f"object_{i}",
-                object_type=obj_type,
-                position=Vector3(x, y, z),
-                rotation=Vector3.zero(),
-                scale=scale,
-                mass=mass,
-                material=material,
-                material_properties=None,
-                color=self._random_color()
-            ))
+            obj = self._create_random_object("multi_obj", i, pos_range, (0.5, 4.0))
+            builder.scene.add_object(obj)
         
         scene = builder.get_scene()
         scene.tags = ["complex", "multi-object", "interaction"]
@@ -348,6 +269,9 @@ class DataGenerator:
         # Generate a physics scene
         scene = self.scenario_generator.generate_scenario()
         
+        # Generate action sequence from the scene
+        action_sequence = self._scene_to_action_sequence(scene)
+        
         # Generate text description
         text_description = self.text_generator.generate_description(scene)
         
@@ -356,6 +280,7 @@ class DataGenerator:
             example_id=f"example_{uuid.uuid4().hex[:8]}",
             text_description=text_description,
             scene=scene,
+            action_sequence=action_sequence,
             metadata={
                 "generated_at": time.time(),
                 "scenario_type": scene.tags[0] if scene.tags else "unknown",
@@ -420,6 +345,67 @@ class DataGenerator:
             json.dump(dataset_dict, f, indent=2)
         
         print(f"Dataset saved to {save_path}")
+
+    def _infer_relationships(self, objects: List[PhysicsObject]) -> List[Dict[str, str]]:
+        """Infers spatial relationships between objects."""
+        relationships = []
+        if len(objects) < 2:
+            return relationships
+
+        for i, obj1 in enumerate(objects):
+            for obj2 in objects[i+1:]:
+                # Check for ON_TOP_OF relationship
+                # A is on top of B if A's center is above B's top surface
+                # and their horizontal projections overlap.
+                z1_bottom = obj1.position.z - obj1.scale.z / 2
+                z2_top = obj2.position.z + obj2.scale.z / 2
+                
+                # Check for horizontal overlap
+                x_overlap = abs(obj1.position.x - obj2.position.x) < (obj1.scale.x + obj2.scale.x) / 2
+                y_overlap = abs(obj1.position.y - obj2.position.y) < (obj1.scale.y + obj2.scale.y) / 2
+
+                # Check for vertical proximity (obj1 is slightly above obj2)
+                vertical_proximity = 0 < (z1_bottom - z2_top) < 0.2 
+
+                if x_overlap and y_overlap and vertical_proximity:
+                    relationships.append({
+                        'subject': obj1.object_id,
+                        'type': 'ON_TOP_OF',
+                        'target': obj2.object_id
+                    })
+        return relationships
+
+    def _scene_to_action_sequence(self, scene: PhysicsScene) -> str:
+        """Converts a PhysicsScene object to a structured action sequence string."""
+        actions = []
+        
+        sorted_objects = sorted(
+            [obj for obj in scene.objects if obj.object_type != ObjectType.PLANE],
+            key=lambda o: (o.object_type.value, o.position.x, o.position.y)
+        )
+
+        for obj in sorted_objects:
+            props = [
+                f"type={obj.object_type.value}",
+                f"id={obj.object_id}",
+                f"pos=({obj.position.x:.2f},{obj.position.y:.2f},{obj.position.z:.2f})",
+                f"rot=({obj.rotation.x:.2f},{obj.rotation.y:.2f},{obj.rotation.z:.2f})",
+                f"scale=({obj.scale.x:.2f},{obj.scale.y:.2f},{obj.scale.z:.2f})",
+                f"mass={obj.mass:.2f}",
+                f"material={obj.material.value}",
+                f"color=({obj.color[0]:.2f},{obj.color[1]:.2f},{obj.color[2]:.2f})"
+            ]
+            if obj.initial_velocity and (obj.initial_velocity.x != 0 or obj.initial_velocity.y != 0 or obj.initial_velocity.z != 0):
+                props.append(f"vel=({obj.initial_velocity.x:.2f},{obj.initial_velocity.y:.2f},{obj.initial_velocity.z:.2f})")
+            
+            actions.append(f"CREATE {' '.join(props)};")
+
+        # Infer relationships from the final scene state
+        relationships = self._infer_relationships(sorted_objects)
+        for rel in relationships:
+            actions.append(f"RELATE subject_id={rel['subject']} type={rel['type']} target_id={rel['target']};")
+        
+        return " ".join(actions)
 
 
 # Test function

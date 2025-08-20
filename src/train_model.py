@@ -13,7 +13,7 @@ from typing import Dict, List
 from torch.utils.data import DataLoader, Subset
 
 from model_architecture import TextToSceneModel, ModelConfig
-from training_pipeline import create_training_pipeline, Trainer
+from training_pipeline import Trainer
 from evaluation_system import ModelEvaluator
 from scene_encoder import SceneEncoder, PhysicsDataset
 
@@ -46,8 +46,8 @@ def train_model(dataset_path: str, config: ModelConfig, save_dir: str = "models"
     print(f"Configuration saved to {config_path}")
     
     # 1. Create the full dataset
-    encoder = SceneEncoder(max_objects=config.max_objects)
-    full_dataset = PhysicsDataset(dataset_path=dataset_path, encoder=encoder)
+    # Encoder is no longer needed here, the model's tokenizer handles it.
+    full_dataset = PhysicsDataset(dataset_path=dataset_path)
     
     # 2. Create shuffled indices for splitting
     dataset_size = len(full_dataset)
@@ -68,12 +68,15 @@ def train_model(dataset_path: str, config: ModelConfig, save_dir: str = "models"
     print(f"  Validation examples: {len(val_subset)}")
     print(f"  Test examples: {len(test_subset)}")
     
-    # Create training pipeline
-    print("\n📊 Setting up training pipeline...")
-    # The pipeline creator now receives the data subsets
-    trainer = create_training_pipeline(train_subset, val_subset, config)
+    # Create DataLoaders
+    collate_fn = lambda batch: tuple(zip(*batch))
+    train_loader = DataLoader(train_subset, batch_size=config.batch_size, shuffle=True, collate_fn=collate_fn)
+    val_loader = DataLoader(val_subset, batch_size=config.batch_size, shuffle=False, collate_fn=collate_fn)
     
-    # Train the model
+    # Create model and trainer
+    model = TextToSceneModel(config=config)
+    trainer = Trainer(config, model, train_loader, val_loader)
+
     print("\n🏋️ Training model...")
     start_time = time.time()
     trainer.train()
@@ -113,37 +116,32 @@ def evaluate_model(model: TextToSceneModel, test_dataset: Subset, config: ModelC
     Returns:
         Evaluation results
     """
-    print("\n🔍 Evaluating model performance...")
+    print("\n🔍 Evaluating model on test set...")
+    model.eval()
     
-    # Create evaluator
-    evaluator = ModelEvaluator(model, max_objects=config.max_objects)
+    # For seq2seq, we can use metrics like BLEU/ROUGE, or a simpler custom metric.
+    # Here, we'll use a simple exact match and semantic similarity score.
+    test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False, collate_fn=lambda batch: tuple(zip(*batch)))
     
-    # Create a DataLoader for the test set
-    test_loader = DataLoader(test_dataset, batch_size=config.batch_size, shuffle=False,
-                             collate_fn=lambda batch: tuple(zip(*batch)))
+    total_examples = 0
+    exact_matches = 0
+    
+    with torch.no_grad():
+        for texts, targets in test_loader:
+            for i in range(len(texts)):
+                text = texts[i]
+                target_sequence = targets[i]
+                predicted_sequence = model.predict_action_sequence(text)
+                
+                if predicted_sequence.strip() == target_sequence.strip():
+                    exact_matches += 1
+                total_examples += 1
 
-    print(f"Evaluating on {len(test_dataset)} test examples...")
+    accuracy = exact_matches / total_examples if total_examples > 0 else 0
     
-    # Comprehensive evaluation
-    eval_results = evaluator.evaluate_on_dataset(test_loader)
-    
-    # Test on specific examples
-    sample_texts = [
-        "create a ball",
-        "add a ramp",
-        "place a sphere on a ramp",
-        "create two boxes",
-        "add a bouncy ball and a wooden ramp"
-    ]
-    
-    print(f"\nTesting on {len(sample_texts)} specific examples...")
-    sample_results = evaluator.evaluate_text_examples(sample_texts)
-    
-    # Combine results
-    full_results = {
-        'dataset_evaluation': eval_results,
-        'sample_evaluation': sample_results,
-        'test_set_size': len(test_dataset)
+    return {
+        'test_set_size': total_examples,
+        'exact_match_accuracy': accuracy
     }
     
     return full_results
@@ -154,28 +152,10 @@ def print_evaluation_summary(results: Dict):
     print("\n📈 Evaluation Summary")
     print("=" * 30)
     
-    dataset_eval = results['dataset_evaluation']
-    
-    # Scene metrics
-    scene_metrics = dataset_eval['scene_metrics']
-    print(f"Object Count Accuracy: {scene_metrics['object_count_accuracy']:.3f}")
-    print(f"Material Accuracy: {scene_metrics['material_accuracy']:.3f}")
-    print(f"Position Error (L2): {scene_metrics['position_error']['l2_mean']:.3f}")
-    print(f"Scale Error (Relative): {scene_metrics['scale_error']['relative_mean']:.3f}")
-    
-    # Physics metrics
-    physics_metrics = dataset_eval['physics_metrics']
-    print(f"\nPhysics Plausibility: {physics_metrics['overall']:.3f}")
-    print(f"  Objects in bounds: {physics_metrics['objects_in_bounds']:.3f}")
-    print(f"  No overlaps: {physics_metrics['no_overlaps']:.3f}")
-    print(f"  Stability: {physics_metrics['stable_configuration']:.3f}")
-    
-    # Sample results
-    sample_eval = results['sample_evaluation']
-    print(f"\nSample Text Evaluation:")
-    for i, result in enumerate(sample_eval[:3]):  # Show first 3
-        print(f"  '{result['text']}'")
-        print(f"    Objects: {result['num_objects']}, Physics: {result['physics_score']['overall']:.3f}")
+    if 'exact_match_accuracy' in results:
+        print(f"Exact Match Accuracy on Test Set: {results['exact_match_accuracy']:.2%}")
+    else:
+        print("Evaluation results format not recognized.")
 
 
 def demonstrate_model(model: TextToSceneModel):
@@ -194,26 +174,16 @@ def demonstrate_model(model: TextToSceneModel):
     
     model.eval()
     with torch.no_grad():
-        for i, text in enumerate(demo_texts):
-            print(f"\nExample {i+1}: '{text}'")
-            
-            # Get prediction
-            predicted_scene = model.predict_scene(text)
-            
-            # Show results
-            objects = [obj for obj in predicted_scene.objects if obj.object_type.value != 'plane']
-            print(f"  Predicted {len(objects)} objects:")
-            
-            for j, obj in enumerate(objects):
-                print(f"    {j+1}. {obj.object_type.value} ({obj.material.value})")
-                print(f"       Position: ({obj.position.x:.2f}, {obj.position.y:.2f}, {obj.position.z:.2f})")
-                print(f"       Mass: {obj.mass:.2f}kg")
+        for text in demo_texts:
+            print(f"\nInput: '{text}'")
+            action_sequence = model.predict_action_sequence(text)
+            print(f"  > Predicted Action Sequence: {action_sequence}")
 
 
 def main():
     """Main training and evaluation function."""
     parser = argparse.ArgumentParser(description='Train text-to-scene model')
-    parser.add_argument('--dataset', type=str, default='data/physics_training_dataset_full.json',
+    parser.add_argument('--dataset', type=str, default='data/physics_dataset_full.json',
                        help='Path to training dataset')
     parser.add_argument('--epochs', type=int, default=20,
                        help='Number of training epochs')
