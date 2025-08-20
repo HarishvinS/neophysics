@@ -11,6 +11,7 @@ import re
 from typing import Dict, List, Tuple, Optional, Any, Set
 from dataclasses import dataclass
 from enum import Enum
+from collections import defaultdict
 # import spacy  # Optional dependency
 # from transformers import AutoTokenizer, AutoModel  # Optional dependency
 
@@ -41,38 +42,41 @@ class SpatialLanguageParser:
         # Spatial relationship patterns
         self.spatial_patterns = {
             RelationType.ABOVE: [
-                r"(\w+)\s+(?:is\s+)?(?:placed\s+)?(?:on\s+top\s+of|above|over)\s+(?:the\s+)?(\w+)",
-                r"put\s+(?:the\s+)?(\w+)\s+(?:on\s+top\s+of|above|over)\s+(?:the\s+)?(\w+)",
-                r"place\s+(?:a\s+|the\s+)?(\w+)\s+(?:on\s+top\s+of|above|over)\s+(?:the\s+)?(\w+)"
+                r"(\w+)\s+(?:is\s+)?(?:placed\s+)?(?:above|over)\s+(?:the\s+)?(\w+)",
+                r"(?:put|place|add|create)\s+(?:a\s+|the\s+)?(\w+)\s+(?:above|over)\s+(?:the\s+)?(\w+)"
+            ],
+            RelationType.ON_TOP_OF: [
+                r"(\w+)\s+(?:is\s+)?(?:placed\s+)?on\s+(?:top\s+of|)\s+(?:the\s+)?(\w+)",
+                r"(?:put|place|add|create)\s+(?:a\s+|the\s+)?(\w+)\s+on\s+(?:top\s+of|)\s+(?:the\s+)?(\w+)"
             ],
             RelationType.BELOW: [
                 r"(\w+)\s+(?:is\s+)?(?:placed\s+)?(?:below|under|beneath)\s+(?:the\s+)?(\w+)",
-                r"put\s+(?:the\s+)?(\w+)\s+(?:below|under|beneath)\s+(?:the\s+)?(\w+)"
+                r"(?:put|place|add|create)\s+(?:the\s+)?(\w+)\s+(?:below|under|beneath)\s+(?:the\s+)?(\w+)"
             ],
             RelationType.BETWEEN: [
                 r"(\w+)\s+(?:is\s+)?(?:placed\s+)?between\s+(?:the\s+)?(\w+)\s+and\s+(?:the\s+)?(\w+)",
                 r"put\s+(?:the\s+)?(\w+)\s+between\s+(?:the\s+)?(\w+)\s+and\s+(?:the\s+)?(\w+)",
-                r"place\s+(?:a\s+|the\s+)?(\w+)\s+between\s+(?:the\s+)?(\w+)\s+and\s+(?:the\s+)?(\w+)"
+                r"(?:place|add|create)\s+(?:a\s+|the\s+)?(\w+)\s+between\s+(?:the\s+)?(\w+)\s+and\s+(?:the\s+)?(\w+)"
             ],
             RelationType.NEAR: [
                 r"(\w+)\s+(?:is\s+)?(?:placed\s+)?(?:near|close\s+to|next\s+to)\s+(?:the\s+)?(\w+)",
-                r"put\s+(?:the\s+)?(\w+)\s+(?:near|close\s+to|next\s+to)\s+(?:the\s+)?(\w+)"
+                r"(?:put|place|add|create)\s+(?:the\s+)?(\w+)\s+(?:near|close\s+to|next\s+to)\s+(?:the\s+)?(\w+)"
             ],
             RelationType.LEFT_OF: [
                 r"(\w+)\s+(?:is\s+)?(?:placed\s+)?(?:to\s+the\s+left\s+of|left\s+of)\s+(?:the\s+)?(\w+)",
-                r"put\s+(?:the\s+)?(\w+)\s+(?:to\s+the\s+left\s+of|left\s+of)\s+(?:the\s+)?(\w+)"
+                r"(?:put|place|add|create)\s+(?:the\s+)?(\w+)\s+(?:to\s+the\s+left\s+of|left\s+of)\s+(?:the\s+)?(\w+)"
             ],
             RelationType.RIGHT_OF: [
                 r"(\w+)\s+(?:is\s+)?(?:placed\s+)?(?:to\s+the\s+right\s+of|right\s+of)\s+(?:the\s+)?(\w+)",
-                r"put\s+(?:the\s+)?(\w+)\s+(?:to\s+the\s+right\s+of|right\s+of)\s+(?:the\s+)?(\w+)"
+                r"(?:put|place|add|create)\s+(?:the\s+)?(\w+)\s+(?:to\s+the\s+right\s+of|right\s+of)\s+(?:the\s+)?(\w+)"
             ],
             RelationType.IN_FRONT_OF: [
                 r"(\w+)\s+(?:is\s+)?(?:placed\s+)?(?:in\s+front\s+of|before)\s+(?:the\s+)?(\w+)",
-                r"put\s+(?:the\s+)?(\w+)\s+(?:in\s+front\s+of|before)\s+(?:the\s+)?(\w+)"
+                r"(?:put|place|add|create)\s+(?:the\s+)?(\w+)\s+(?:in\s+front\s+of|before)\s+(?:the\s+)?(\w+)"
             ],
             RelationType.BEHIND: [
                 r"(\w+)\s+(?:is\s+)?(?:placed\s+)?(?:behind|after)\s+(?:the\s+)?(\w+)",
-                r"put\s+(?:the\s+)?(\w+)\s+(?:behind|after)\s+(?:the\s+)?(\w+)"
+                r"(?:put|place|add|create)\s+(?:the\s+)?(\w+)\s+(?:behind|after)\s+(?:the\s+)?(\w+)"
             ]
         }
         
@@ -354,7 +358,9 @@ class RelationalSceneBuilder:
             'box': {'type': ObjectType.BOX, 'scale': Vector3(0.5, 0.5, 0.5), 'mass': 2.0},
             'ramp': {'type': ObjectType.RAMP, 'scale': Vector3(2.0, 0.2, 1.0), 'mass': 0.0},
             'cylinder': {'type': ObjectType.CYLINDER, 'scale': Vector3(0.5, 0.5, 1.0), 'mass': 1.5},
-            'sphere': {'type': ObjectType.SPHERE, 'scale': Vector3(0.5, 0.5, 0.5), 'mass': 1.0}
+            'sphere': {'type': ObjectType.SPHERE, 'scale': Vector3(0.5, 0.5, 0.5), 'mass': 1.0},
+            'cube': {'type': ObjectType.BOX, 'scale': Vector3(0.5, 0.5, 0.5), 'mass': 2.0},
+            'plane': {'type': ObjectType.PLANE, 'scale': Vector3(10.0, 10.0, 0.1), 'mass': 0.0}
         }
     
     def build_scene_from_text(self, text: str) -> DynamicPhysicsScene:
@@ -364,50 +370,62 @@ class RelationalSceneBuilder:
         # Parse spatial concepts
         concepts = self.parser.parse_spatial_text(text)
         
-        # Collect all mentioned objects
-        all_objects = set()
+        # Collect all mentioned object descriptions from concepts
+        all_object_descs = []
         for concept in concepts:
-            all_objects.add(concept.primary_object)
-            all_objects.update(concept.reference_objects)
+            all_object_descs.append(concept.primary_object)
+            all_object_descs.extend(concept.reference_objects)
         
         # If no relationships found, extract objects from simple text
         if not concepts:
-            all_objects = self._extract_objects_from_text(text)
+            all_object_descs = self._extract_objects_from_text(text)
         
         # Create object instances
         objects_dict = {}
-        for obj_name in all_objects:
-            if obj_name in self.default_objects:
-                obj_props = self.default_objects[obj_name]
+        obj_type_counts = defaultdict(int)
+
+        # Create a mapping from the original description to the created object
+        desc_to_obj_map = {}
+
+        for obj_desc in all_object_descs:
+            # Normalize the description to find the base object type
+            normalized_type = self._find_base_type_from_desc(obj_desc)
+
+            if normalized_type in self.default_objects:
+                obj_props = self.default_objects[normalized_type]
                 
+                # Create a unique ID for each instance
+                obj_type_counts[normalized_type] += 1
+                obj_id = f"{normalized_type}_{obj_type_counts[normalized_type]}"
+
                 obj = DynamicPhysicsObject(
-                    object_id=f"{obj_name}_{len(objects_dict) + 1}",
+                    object_id=obj_id,
                     object_type=obj_props['type'],
                     position=Vector3(0, 0, 1),  # Default position
                     rotation=Vector3(0, 0, 0),
                     scale=obj_props['scale'],
                     mass=obj_props['mass'],
-                    material=MaterialType.WOOD  # Default material
+                    material=self._extract_material(obj_desc)
                 )
                 
-                objects_dict[obj_name] = obj
+                desc_to_obj_map[obj_desc] = obj
                 scene.add_object(obj)
         
         # Resolve spatial layout
         if concepts:
-            positions = self.resolver.resolve_spatial_layout(concepts, objects_dict)
+            positions = self.resolver.resolve_spatial_layout(concepts, desc_to_obj_map)
             
             # Update object positions
             for obj_name, position in positions.items():
-                if obj_name in objects_dict:
-                    objects_dict[obj_name].position = position
+                if obj_name in desc_to_obj_map:
+                    desc_to_obj_map[obj_name].position = position
             
             # Add spatial relationships to scene
             for concept in concepts:
                 relation = SpatialRelation(
                     relation_type=concept.spatial_relation,
-                    subject_id=objects_dict[concept.primary_object].object_id if concept.primary_object in objects_dict else concept.primary_object,
-                    target_id=objects_dict[concept.reference_objects[0]].object_id if concept.reference_objects and concept.reference_objects[0] in objects_dict else "unknown",
+                    subject_id=desc_to_obj_map[concept.primary_object].object_id,
+                    target_id=desc_to_obj_map[concept.reference_objects[0]].object_id,
                     confidence=concept.confidence,
                     parameters=concept.parameters
                 )
@@ -415,28 +433,79 @@ class RelationalSceneBuilder:
         
         return scene
     
-    def _extract_objects_from_text(self, text: str) -> Set[str]:
-        """Extract object names from text when no relationships are found."""
+    def _extract_objects_from_text(self, text: str) -> List[str]:
+        """Extract object descriptions from text when no relationships are found."""
         objects = set()
         text_lower = text.lower()
         
+        # Handle number words
+        number_words = {'two': 2, 'three': 3, 'four': 4, 'five': 5}
+
         # Look for object creation patterns
         creation_patterns = [
-            r"create\s+(?:a\s+|an\s+|the\s+)?(\w+)",
-            r"add\s+(?:a\s+|an\s+|the\s+)?(\w+)",
-            r"place\s+(?:a\s+|an\s+|the\s+)?(\w+)",
-            r"put\s+(?:a\s+|an\s+|the\s+)?(\w+)",
-            r"make\s+(?:a\s+|an\s+|the\s+)?(\w+)"
+            r"(?:create|add|make|place|put|build)\s+(.*)"
         ]
         
         for pattern in creation_patterns:
-            matches = re.finditer(pattern, text_lower)
-            for match in matches:
-                obj_name = self.parser._normalize_object_name(match.group(1))
-                if obj_name in self.default_objects:
-                    objects.add(obj_name)
+            match = re.match(pattern, text_lower)
+            if match:
+                object_list_str = match.group(1)
+                # Split by 'and' and commas
+                object_phrases = re.split(r'\s+and\s+|,', object_list_str)
+                
+                for phrase in object_phrases:
+                    phrase = phrase.strip()
+                    if not phrase:
+                        continue
+                    
+                    words = phrase.split()
+                    count = 1
+                    
+                    # Check for number words
+                    for word in words:
+                        if word in number_words:
+                            count = number_words[word]
+                            break
+                        elif word.isdigit():
+                            count = int(word)
+                            break
+                    
+                    # Add the full phrase description for each object
+                    for _ in range(count):
+                        objects.add(phrase)
+                
+                # If we found a match, we can stop
+                break
         
-        return objects
+        return list(objects)
+
+    def _find_base_type_from_desc(self, description: str) -> Optional[str]:
+        """Finds the base object type (e.g., 'ball', 'box') from a description."""
+        words = description.lower().split()
+        for word in words:
+            singular_form = word
+            if singular_form.endswith('s') and not singular_form.endswith('ss'):
+                if singular_form.endswith('es') and singular_form[:-2] in self.default_objects:
+                    singular_form = singular_form[:-2]
+                else:
+                    singular_form = singular_form[:-1]
+            normalized = self.parser._normalize_object_name(singular_form)
+            if normalized in self.default_objects:
+                return normalized
+        return None
+
+    def _extract_material(self, description: str) -> MaterialType:
+        """Extract material from an object description."""
+        desc_lower = description.lower()
+        if 'wood' in desc_lower or 'wooden' in desc_lower:
+            return MaterialType.WOOD
+        if 'metal' in desc_lower or 'metallic' in desc_lower:
+            return MaterialType.METAL
+        if 'bouncy' in desc_lower or 'rubber' in desc_lower:
+            return MaterialType.BOUNCY
+        if 'glass' in desc_lower or 'transparent' in desc_lower:
+            return MaterialType.GLASS
+        return MaterialType.PLASTIC # Default
 
 
 def test_relational_understanding():

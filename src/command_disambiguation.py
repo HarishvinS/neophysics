@@ -114,9 +114,10 @@ class CommandDisambiguator:
                     'description': 'Placement command without destination'
                 },
                 {
-                    'pattern': r'\b(create|make|add)\s+(?:a\s+)?(\w+)\s*$',
+                    # This pattern now specifically looks for generic object terms after a creation verb.
+                    'pattern': r'\b(create|make|add)\s+(?:a\s+)?(thing|object|item|stuff)\s*$',
                     'confidence': 0.7,
-                    'description': 'Creation command without properties or location'
+                    'description': 'Creation command with a generic object and no properties'
                 }
             ],
             AmbiguityType.MULTIPLE_INTERPRETATIONS: [
@@ -124,11 +125,6 @@ class CommandDisambiguator:
                     'pattern': r'\b(ball|sphere)\b.*\b(ball|sphere)\b',
                     'confidence': 0.8,
                     'description': 'Multiple similar objects mentioned'
-                },
-                {
-                    'pattern': r'\b(on|above|over)\b',
-                    'confidence': 0.6,
-                    'description': 'Spatial relationship could have multiple meanings'
                 }
             ],
             AmbiguityType.INCOMPLETE_COMMAND: [
@@ -417,20 +413,64 @@ class CommandDisambiguator:
             'ball', 'sphere', 'box', 'cube', 'ramp', 'cylinder', 'plane',
             'pendulum', 'spring', 'chain', 'rope', 'bridge', 'car', 'wheel'
         ]
+
+        concept_lower = concept.lower()
+        singular_form = concept_lower
+        # A more robust plural handler
+        if singular_form.endswith('s') and not singular_form.endswith('ss'):
+            if singular_form.endswith('es'):
+                # Heuristic: if removing 'es' gives a known object, do it.
+                if singular_form[:-2] in known_objects:
+                    singular_form = singular_form[:-2]
+                else: # e.g. "spheres" -> "sphere"
+                    singular_form = singular_form[:-1]
+            else:
+                singular_form = singular_form[:-1]
         
         known_materials = [
             'wood', 'metal', 'rubber', 'plastic', 'glass', 'stone',
             'steel', 'aluminum', 'copper', 'iron'
         ]
         
+        # Expanded properties to include materials, sizes, and physics terms
         known_properties = [
             'red', 'blue', 'green', 'yellow', 'black', 'white',
-            'large', 'small', 'heavy', 'light', 'fast', 'slow'
+            'large', 'small', 'heavy', 'light', 'fast', 'slow',
+            'bouncy', 'elastic', 'flexible', 'rigid', 'soft', 'hard',
+            'metallic', 'wooden', 'transparent', 'curved', 'straight',
+            'hollow', 'solid', 'u-shaped', 'c-shaped', 'l-shaped',
+            'aerodynamic', 'sharp', 'pointed', 'flat', 'long', 'wide', 'tall'
         ]
+
+        # Numbers as words and a check for digits
+        known_numbers = [
+            'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'
+        ]
+
+        # Check if the concept is a number (digit or word)
+        if concept.isdigit() or concept.lower() in known_numbers:
+            return True
         
-        return (concept.lower() in known_objects or 
-                concept.lower() in known_materials or 
-                concept.lower() in known_properties)
+        known_verbs = [
+            'create', 'make', 'add', 'build', 'place', 'put', 'move',
+            'set', 'simulate', 'run', 'start', 'execute', 'play',
+            'change', 'modify', 'adjust', 'delete', 'remove', 'clear',
+            'what', 'how', 'why', 'predict', 'explain', 'teach', 'learn',
+            'solve', 'wait', 'pause'
+        ]
+
+        stop_words = [
+            'a', 'an', 'the', 'is', 'in', 'on', 'at', 'to', 'of', 'for',
+            'with', 'by', 'and', 'then', 'it', 'that', 'this', 'them',
+            'me', 'you', 'my'
+        ]
+
+        return (concept_lower in known_objects or
+                singular_form in known_objects or
+                concept_lower in known_materials or
+                concept_lower in known_properties or
+                concept_lower in known_verbs or
+                concept_lower in stop_words)
     
     def _deduplicate_ambiguities(self, ambiguities: List[AmbiguityDetection]) -> List[AmbiguityDetection]:
         """Remove duplicate ambiguity detections."""

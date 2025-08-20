@@ -6,6 +6,7 @@ Combines text input, ML prediction, and live physics simulation in a unified GUI
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
 import threading
+import time
 import os
 from typing import Optional, Dict
 
@@ -16,6 +17,7 @@ from model_architecture import TextToSceneModel, ModelConfig
 from natural_conversation_interface import NaturalConversationInterface, ConversationMode
 from command_disambiguation import CommandDisambiguator
 from multi_step_command_parser import CommandSequence, CommandType
+from relational_understanding import RelationalSceneBuilder
 from dynamic_scene_representation import DynamicPhysicsScene, DynamicPhysicsObject
 
 
@@ -35,6 +37,7 @@ class InteractivePhysicsApp:
         self.validator = None
         self.conversation_interface = None
         self.disambiguator = None
+        self.relational_builder = None
 
         # State
         self.model_loaded = False
@@ -45,7 +48,7 @@ class InteractivePhysicsApp:
         self.setup_ui()
         
         # Try to load model automatically
-        self.load_model_async()
+        self._load_model_async()
         
         print("🚀 Interactive Physics Engine initialized!")
     
@@ -276,6 +279,7 @@ class InteractivePhysicsApp:
                 self.validator = PhysicsValidator(self.bridge, self.simulator) # Validator can still be used
                 self.conversation_interface = NaturalConversationInterface()
                 self.disambiguator = CommandDisambiguator(self.conversation_interface.context)
+                self.relational_builder = RelationalSceneBuilder()
                 
                 self.progress_var.set(80)
                 
@@ -322,25 +326,26 @@ class InteractivePhysicsApp:
                     self.physics_initialized = True
                     self._update_status_indicators()
 
-                # 1. Check for ambiguity
-                self.log_message("1. Checking for ambiguity...")
-                disambiguation_response = self.disambiguator.generate_disambiguation_response(command)
-                if disambiguation_response.ambiguities_detected and not disambiguation_response.can_proceed_with_assumptions:
-                    self.log_message(f"Clarification needed: {disambiguation_response.primary_question}", "WARNING")
-                    for suggestion in disambiguation_response.alternative_suggestions:
-                        self.log_message(f"  Suggestion: {suggestion}")
-                    return
-                elif disambiguation_response.assumptions_made:
-                    for assumption in disambiguation_response.assumptions_made:
-                        self.log_message(f"Proceeding with assumption: {assumption}")
-
-                # 2. Process with conversational interface
-                self.log_message("2. Processing with conversational interface...")
+                # 1. Process with conversational interface to determine intent first
+                self.log_message("1. Processing with conversational interface...")
                 conv_response = self.conversation_interface.process_conversation_input(command)
                 self.log_message(f"System says: {conv_response.content}")
 
-                # 3. If it's a command, build the scene and simulate
+                # 2. If it's a command, check for ambiguity before executing
                 if self.conversation_interface.current_mode == ConversationMode.COMMAND_EXECUTION:
+                    self.log_message("2. Command detected, checking for ambiguity...")
+                    disambiguation_response = self.disambiguator.generate_disambiguation_response(command)
+                    
+                    if disambiguation_response.ambiguities_detected and not disambiguation_response.can_proceed_with_assumptions:
+                        self.log_message(f"Clarification needed: {disambiguation_response.primary_question}", "WARNING")
+                        for suggestion in disambiguation_response.alternative_suggestions:
+                            self.log_message(f"  Suggestion: {suggestion}")
+                        return
+                    elif disambiguation_response.assumptions_made:
+                        for assumption in disambiguation_response.assumptions_made:
+                            self.log_message(f"Proceeding with assumption: {assumption}")
+
+                    # 3. Build the scene and simulate
                     self.log_message("3. Building scene from command...")
                     sequence = self.conversation_interface.command_parser.parse_command_sequence(command)
                     scene = self._build_scene_from_sequence(sequence)
@@ -360,6 +365,7 @@ class InteractivePhysicsApp:
                     self.log_message(f"6. Running simulation for {duration}s...")
                     self.start_simulation(duration)
                 else:
+                    # Handle conversational modes without running the simulation pipeline
                     self.log_message("Command was conversational, no simulation to run.")
                     if conv_response.follow_up_suggestions:
                         for suggestion in conv_response.follow_up_suggestions:
@@ -410,61 +416,16 @@ class InteractivePhysicsApp:
 
     def _build_scene_from_sequence(self, sequence: CommandSequence) -> DynamicPhysicsScene:
         """Builds a DynamicPhysicsScene from a parsed command sequence."""
-        scene = DynamicPhysicsScene(f"scene_{sequence.sequence_id}")
-        created_objects_map: Dict[str, DynamicPhysicsObject] = {}
-
-        # Use the execution order determined by the parser
-        for step_id in sequence.execution_order:
-            step = next((s for s in sequence.steps if s.step_id == step_id), None)
-            if not step:
-                continue
-
-            if step.command_type == CommandType.CREATE:
-                desc = step.parameters.get('object_description')
-                if not desc:
-                    continue
-                
-                self.log_message(f"   - Understanding '{desc}'...")
-                concept = self.conversation_interface.conceptual_reasoner.synthesize_object_concept(desc)
-                
-                # For now, place at a default position. A more advanced version would parse position.
-                new_obj = self.conversation_interface.conceptual_reasoner.create_object_from_concept(concept)
-                
-                scene.add_object(new_obj)
-                created_objects_map[desc] = new_obj
-                self.log_message(f"     > Created '{new_obj.object_id}' (Confidence: {concept['confidence']:.2f})")
-
-            elif step.command_type == CommandType.PLACE:
-                if len(step.target_objects) >= 2:
-                    subject_desc = step.target_objects[0]
-                    ref_desc = step.target_objects[1]
-
-                    # Find the created DynamicPhysicsObject instances
-                    subject_obj = next((obj for desc, obj in created_objects_map.items() if subject_desc in desc), None)
-                    ref_obj = next((obj for desc, obj in created_objects_map.items() if ref_desc in desc), None)
-
-                    if subject_obj and ref_obj:
-                        relation = step.parameters.get('spatial_relation')
-                        self.log_message(f"   - Placing '{subject_obj.object_id}' {relation} '{ref_obj.object_id}'...")
-
-                        # Simplified placement logic (a more advanced version would be in a dedicated resolver)
-                        if relation in ['on', 'above', 'on top of']:
-                            ref_size = ref_obj.scale
-                            # Position the subject on top of the reference object
-                            new_pos = DynamicPhysicsObject.Vector3(
-                                ref_obj.position.x,
-                                ref_obj.position.y,
-                                ref_obj.position.z + ref_size.z / 2 + subject_obj.scale.z / 2 + 0.1
-                            )
-                            subject_obj.position = new_pos
-                            self.log_message(f"     > Moved '{subject_obj.object_id}' to {new_pos.to_list()}")
-                        else:
-                            self.log_message(f"     > (Placement logic for '{relation}' not yet implemented in this demo)")
-                    else:
-                        self.log_message(f"   - (Skipping PLACE: could not find objects '{subject_desc}' or '{ref_desc}')")
-                else:
-                    self.log_message(f"   - (Skipping PLACE: not enough objects in command)")
-
+        command_text = sequence.original_text
+        self.log_message(f"   - Building scene from '{command_text}' using RelationalSceneBuilder...")
+        
+        # Use the more powerful relational builder which can handle complex commands
+        scene = self.relational_builder.build_scene_from_text(command_text)
+        
+        # Log created objects for user feedback
+        for obj in scene.objects.values():
+            self.log_message(f"     > Created '{obj.object_id}' with material '{obj.material.value}'")
+            
         self.conversation_interface.current_scene = scene
         return scene
 
