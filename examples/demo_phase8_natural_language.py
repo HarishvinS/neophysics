@@ -285,14 +285,17 @@ class Week8NaturalLanguageDemo:
             print(f"   📝 Response: {conv_response.content[:80]}...")
             
             # 3. Check if it's a multi-step command
-            if any(word in user_input.lower() for word in ['then', 'and', ',']):
-                sequence = self.command_parser.parse_command_sequence(user_input)
+            sequence = self.command_parser.parse_command_sequence(user_input)
+            if len(sequence.steps) > 1:
                 print(f"   🔗 Multi-step: {len(sequence.steps)} steps identified")
             
             # 4. Check for novel objects
-            novel_words = ['u-shaped', 'curved', 'interesting', 'thingy']
-            if any(word in user_input.lower() for word in novel_words):
-                print(f"   🎨 Novel concept detected - using generative understanding")
+            # A concept is considered novel if the reasoner has to make an educated guess.
+            # We can check this by seeing if the confidence is below a high threshold or if
+            # it synthesized a concept from multiple patterns.
+            concept = self.conceptual_reasoner.synthesize_object_concept(user_input)
+            if concept['confidence'] < 0.9 and len(concept['inferred_properties']) > 0:
+                print(f"   🎨 Novel concept detected - using generative understanding (Confidence: {concept['confidence']:.2f})")
             
             # 5. Add to context
             self.context.add_conversation_turn(user_input, conv_response.content)

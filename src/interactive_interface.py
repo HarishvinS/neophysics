@@ -435,7 +435,35 @@ class InteractivePhysicsApp:
                 self.log_message(f"     > Created '{new_obj.object_id}' (Confidence: {concept['confidence']:.2f})")
 
             elif step.command_type == CommandType.PLACE:
-                self.log_message(f"   - (Skipping PLACE step for this integration demo)")
+                if len(step.target_objects) >= 2:
+                    subject_desc = step.target_objects[0]
+                    ref_desc = step.target_objects[1]
+
+                    # Find the created DynamicPhysicsObject instances
+                    subject_obj = next((obj for desc, obj in created_objects_map.items() if subject_desc in desc), None)
+                    ref_obj = next((obj for desc, obj in created_objects_map.items() if ref_desc in desc), None)
+
+                    if subject_obj and ref_obj:
+                        relation = step.parameters.get('spatial_relation')
+                        self.log_message(f"   - Placing '{subject_obj.object_id}' {relation} '{ref_obj.object_id}'...")
+
+                        # Simplified placement logic (a more advanced version would be in a dedicated resolver)
+                        if relation in ['on', 'above', 'on top of']:
+                            ref_size = ref_obj.scale
+                            # Position the subject on top of the reference object
+                            new_pos = DynamicPhysicsObject.Vector3(
+                                ref_obj.position.x,
+                                ref_obj.position.y,
+                                ref_obj.position.z + ref_size.z / 2 + subject_obj.scale.z / 2 + 0.1
+                            )
+                            subject_obj.position = new_pos
+                            self.log_message(f"     > Moved '{subject_obj.object_id}' to {new_pos.to_list()}")
+                        else:
+                            self.log_message(f"     > (Placement logic for '{relation}' not yet implemented in this demo)")
+                    else:
+                        self.log_message(f"   - (Skipping PLACE: could not find objects '{subject_desc}' or '{ref_desc}')")
+                else:
+                    self.log_message(f"   - (Skipping PLACE: not enough objects in command)")
 
         self.conversation_interface.current_scene = scene
         return scene
