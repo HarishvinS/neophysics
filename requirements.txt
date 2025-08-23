@@ -1,6 +1,7 @@
 # Core ML and Physics Dependencies
 torch>=2.0.0
 transformers>=4.30.0
+sentencepiece  # Required for T5 Tokenizer
 sentence-transformers>=2.2.0
 
 # Physics Simulation

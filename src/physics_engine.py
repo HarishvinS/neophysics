@@ -6,7 +6,7 @@ Handles 3D physics simulation with gravity, collisions, and basic objects.
 import pybullet as p
 import time
 import numpy as np
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, Any
 
 
 class PhysicsEngine:
@@ -21,7 +21,8 @@ class PhysicsEngine:
         """
         self.use_gui = use_gui
         self.physics_client = None
-        self.objects = {}  # Track created objects
+        self.objects: Dict[str, int] = {}  # Track created objects: name -> body_id
+        self.object_metadata: Dict[int, Dict[str, Any]] = {} # body_id -> creation properties
         self.object_counter = 0
         
         self.setup_physics_world()
@@ -118,6 +119,15 @@ class PhysicsEngine:
         object_name = f"sphere_{self.object_counter}"
         self.objects[object_name] = body_id
         self.object_counter += 1
+        self.object_metadata[body_id] = {
+            'type': 'sphere',
+            'position': position,
+            'radius': radius,
+            'mass': mass,
+            'color': color,
+            'restitution': restitution,
+            'lateral_friction': lateral_friction
+        }
         
         return body_id
     
@@ -173,6 +183,15 @@ class PhysicsEngine:
         object_name = f"box_{self.object_counter}"
         self.objects[object_name] = body_id
         self.object_counter += 1
+        self.object_metadata[body_id] = {
+            'type': 'box',
+            'position': position,
+            'half_extents': half_extents,
+            'mass': mass,
+            'color': color,
+            'restitution': restitution,
+            'lateral_friction': lateral_friction
+        }
         
         return body_id
     
@@ -233,6 +252,16 @@ class PhysicsEngine:
         object_name = f"ramp_{self.object_counter}"
         self.objects[object_name] = body_id
         self.object_counter += 1
+        self.object_metadata[body_id] = {
+            'type': 'ramp',
+            'position': position,
+            'angle': angle,
+            'size': size,
+            'mass': mass,
+            'color': color,
+            'restitution': restitution,
+            'lateral_friction': lateral_friction
+        }
         
         return body_id
 
@@ -311,6 +340,8 @@ class PhysicsEngine:
             
             p.removeBody(object_id, physicsClientId=self.physics_client)
             del self.objects[name]
+            if object_id in self.object_metadata:
+                del self.object_metadata[object_id]
         
         # Don't reset counter to maintain unique naming
         # self.object_counter = 0

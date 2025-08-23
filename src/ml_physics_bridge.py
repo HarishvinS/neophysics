@@ -118,6 +118,11 @@ class MLPhysicsBridge:
         scene = DynamicPhysicsScene("predicted_scene")
         actions = self._parse_action_sequence(action_sequence_str)
         
+        # Temporary storage for objects before relationships are applied
+        temp_objects: Dict[str, DynamicPhysicsObject] = {}
+
+        # First pass: Create all objects and store them temporarily.
+        # This ensures all objects exist before we try to relate them.
         for action in actions:
             if action['type'] == 'CREATE':
                 params = action['params']
@@ -126,9 +131,10 @@ class MLPhysicsBridge:
                     pos_tuple = eval(params.get('pos', '(0,0,1)'))
                     rot_tuple = eval(params.get('rot', '(0,0,0)'))
                     scale_tuple = eval(params.get('scale', '(0.5,0.5,0.5)'))
+                    obj_id = params.get('id', f"obj_{len(temp_objects)}")
 
                     obj = DynamicPhysicsObject(
-                        object_id=params.get('id', f"obj_{len(scene.objects)}"),
+                        object_id=obj_id,
                         object_type=ObjectType(params.get('type', 'box')),
                         position=Vector3(*pos_tuple),
                         rotation=Vector3(*rot_tuple),
@@ -136,16 +142,61 @@ class MLPhysicsBridge:
                         mass=float(params.get('mass', 1.0)),
                         material=MaterialType(params.get('material', 'wood'))
                     )
-                    scene.add_object(obj)
+                    temp_objects[obj.object_id] = obj
                 except Exception as e:
                     print(f"     > ⚠️ Failed to create object from params {params}: {e}")
-            
-            elif action['type'] == 'RELATE':
-                # Placeholder for future relationship handling
+
+        # Second pass: Apply all relationships to modify object properties (e.g., position).
+        # This logic is now separate and acts on the created objects.
+        for action in actions:
+            if action['type'] == 'RELATE':
                 params = action['params']
-                print(f"     > Relationship (not yet implemented): {params.get('subject_id')} {params.get('type')} {params.get('target_id')}")
+                subject_id = params.get('subject_id')
+                target_id = params.get('target_id')
+                rel_type = params.get('type')
+
+                if subject_id in temp_objects and target_id in temp_objects:
+                    subject_obj = temp_objects[subject_id]
+                    target_obj = temp_objects[target_id]
+                    self._apply_relationship(subject_obj, target_obj, rel_type)
+                else:
+                    print(f"     > ⚠️ Could not find objects for relationship: {subject_id} '{rel_type}' {target_id}")
+
+        # Final pass: Add all processed objects to the scene.
+        for obj in temp_objects.values():
+            scene.add_object(obj)
+
         return scene
     
+    def _apply_relationship(self, subject: DynamicPhysicsObject, target: DynamicPhysicsObject, rel_type: str):
+        """
+        Adjusts the subject's properties based on its relationship to the target.
+        This is a generalizable approach that uses object bounding boxes, avoiding hardcoded rules.
+        The model is expected to learn specific placements (e.g., 'top of ramp'), while this
+        function provides a general physical constraint (e.g., 'on top of').
+        """
+        print(f"     > Applying relationship: {subject.object_id} '{rel_type}' {target.object_id}")
+
+        if rel_type.lower() == 'on':
+            # --- GENERAL 'ON TOP' LOGIC ---
+            # This logic places the subject on top of the target's axis-aligned bounding box (AABB).
+            # It aligns the centers of the objects on the X and Y axes by default.
+
+            # 1. Calculate the Z-coordinate of the target's top surface (center + vertical half-extent).
+            target_top_z = target.position.z + (target.scale.z if target.object_type in [ObjectType.BOX, ObjectType.RAMP] else target.scale.x)
+
+            # 2. Calculate the subject's vertical extent (from its center to its bottom).
+            subject_vertical_extent = subject.scale.z if subject.object_type in [ObjectType.BOX, ObjectType.RAMP] else subject.scale.x
+
+            # 3. Set the subject's new position.
+            subject.position.x = target.position.x
+            subject.position.y = target.position.y
+            subject.position.z = target_top_z + subject_vertical_extent + 0.01  # Epsilon to prevent initial collision
+
+            print(f"       -> Moved {subject.object_id} to {subject.position.to_tuple()}")
+
+        # Other relationships like 'next_to' or 'inside' could be added here with similar general logic.
+
     def scene_to_physics(self, scene: DynamicPhysicsScene) -> List[int]:
         """
         Convert a PhysicsScene to PyBullet objects.
