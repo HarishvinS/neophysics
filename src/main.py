@@ -248,7 +248,7 @@ class InteractivePhysicsApp:
                 else:
                     self.log_message("No trained model found, using pre-trained t5-small", "WARNING")
                     self.model = Seq2SeqModel(model_name="t5-small")
-                    self.log_message("Using a base model. For best results, run train_model.py first.", "WARNING")
+                    self.log_message("Using a base model. Training data should be used to train the model.", "WARNING")
                 
                 self.progress_var.set(60)
                 
@@ -309,6 +309,10 @@ class InteractivePhysicsApp:
                 self.log_message("1. Generating action sequence from command...")
                 action_sequence_str = self.model.generate(command)
                 self.log_message(f"   > Predicted sequence: {action_sequence_str}")
+                
+                # Check if model returned natural language instead of action sequence
+                if not any(keyword in action_sequence_str.upper() for keyword in ['CREATE', 'RELATE', 'ID=', 'TYPE=']):
+                    self.log_message("⚠️ Model returned natural language instead of action sequence. Model may need more training.", "WARNING")
 
                 # 2. Build the scene from this action sequence
                 self.log_message("2. Building scene from action sequence...")
@@ -371,6 +375,18 @@ class InteractivePhysicsApp:
     def _parse_action_sequence(self, seq_str: str) -> List[Dict[str, Any]]:
         """Parses the action sequence string from the model into a list of action dicts."""
         actions = []
+        
+        # Handle case where model returns natural language instead of action sequence
+        if not any(keyword in seq_str.upper() for keyword in ['CREATE', 'RELATE', 'ID=', 'TYPE=']):
+            self.log_message(f"Model returned natural language instead of action sequence: {seq_str}", "WARNING")
+            # Try to create a simple default object based on common words
+            if any(word in seq_str.lower() for word in ['ball', 'sphere']):
+                return [{'type': 'CREATE', 'params': {'id': 'obj1', 'type': 'sphere', 'pos': '(0,0,1)', 'rot': '(0,0,0)', 'scale': '(0.2,0.2,0.2)', 'mass': '1.0', 'material': 'wood'}}]
+            elif any(word in seq_str.lower() for word in ['box', 'cube']):
+                return [{'type': 'CREATE', 'params': {'id': 'obj1', 'type': 'box', 'pos': '(0,0,1)', 'rot': '(0,0,0)', 'scale': '(0.2,0.2,0.2)', 'mass': '1.0', 'material': 'wood'}}]
+            else:
+                return [{'type': 'CREATE', 'params': {'id': 'obj1', 'type': 'sphere', 'pos': '(0,0,1)', 'rot': '(0,0,0)', 'scale': '(0.2,0.2,0.2)', 'mass': '1.0', 'material': 'wood'}}]
+        
         # Split by semicolon to get individual actions
         action_strs = [s.strip() for s in seq_str.split(';') if s.strip()]
         

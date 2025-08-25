@@ -9,7 +9,7 @@ from typing import Dict, List, Tuple, Optional, Any
 import time
 import re
 
-from model_architecture import TextToSceneModel
+from nlp_model import Seq2SeqModel
 from dynamic_scene_representation import DynamicPhysicsScene, DynamicPhysicsObject, ObjectType, MaterialType, Vector3
 from physics_engine import PhysicsEngine
 
@@ -17,7 +17,7 @@ from physics_engine import PhysicsEngine
 class MLPhysicsBridge:
     """Bridge between ML predictions and PyBullet physics simulation."""
     
-    def __init__(self, model: TextToSceneModel, use_gui: bool = True):
+    def __init__(self, model: Seq2SeqModel, use_gui: bool = True):
         """
         Initialize the ML-Physics bridge.
         
@@ -63,7 +63,7 @@ class MLPhysicsBridge:
         
         # Get ML prediction
         start_time = time.time()
-        action_sequence_str = self.model.predict_action_sequence(text)
+        action_sequence_str = self.model.generate(text)
         prediction_time = time.time() - start_time
         
         print(f"⚡ ML prediction completed in {prediction_time:.3f}s")
@@ -95,6 +95,18 @@ class MLPhysicsBridge:
     def _parse_action_sequence(self, seq_str: str) -> List[Dict[str, Any]]:
         """Parses the action sequence string from the model into a list of action dicts."""
         actions = []
+        
+        # Handle case where model returns natural language instead of action sequence
+        if not any(keyword in seq_str.upper() for keyword in ['CREATE', 'RELATE', 'ID=', 'TYPE=']):
+            print(f"     > ⚠️ Model returned natural language instead of action sequence: {seq_str}")
+            # Try to create a simple default object based on common words
+            if any(word in seq_str.lower() for word in ['ball', 'sphere']):
+                return [{'type': 'CREATE', 'params': {'id': 'obj1', 'type': 'sphere', 'pos': '(0,0,1)', 'rot': '(0,0,0)', 'scale': '(0.2,0.2,0.2)', 'mass': '1.0', 'material': 'wood'}}]
+            elif any(word in seq_str.lower() for word in ['box', 'cube']):
+                return [{'type': 'CREATE', 'params': {'id': 'obj1', 'type': 'box', 'pos': '(0,0,1)', 'rot': '(0,0,0)', 'scale': '(0.2,0.2,0.2)', 'mass': '1.0', 'material': 'wood'}}]
+            else:
+                return [{'type': 'CREATE', 'params': {'id': 'obj1', 'type': 'sphere', 'pos': '(0,0,1)', 'rot': '(0,0,0)', 'scale': '(0.2,0.2,0.2)', 'mass': '1.0', 'material': 'wood'}}]
+        
         # Use regex to find all "ACTION key=value ...;" blocks
         action_patterns = re.finditer(r"(\w+)\s+(.*?);", seq_str)
         for match in action_patterns:
@@ -133,6 +145,14 @@ class MLPhysicsBridge:
                     scale_tuple = eval(params.get('scale', '(0.5,0.5,0.5)'))
                     obj_id = params.get('id', f"obj_{len(temp_objects)}")
 
+                    # Handle unknown materials by defaulting to wood
+                    material_str = params.get('material', 'wood')
+                    try:
+                        material = MaterialType(material_str)
+                    except ValueError:
+                        print(f"     > ⚠️ Unknown material '{material_str}', using wood instead")
+                        material = MaterialType.WOOD
+                    
                     obj = DynamicPhysicsObject(
                         object_id=obj_id,
                         object_type=ObjectType(params.get('type', 'box')),
@@ -140,7 +160,7 @@ class MLPhysicsBridge:
                         rotation=Vector3(*rot_tuple),
                         scale=Vector3(*scale_tuple),
                         mass=float(params.get('mass', 1.0)),
-                        material=MaterialType(params.get('material', 'wood'))
+                        material=material
                     )
                     temp_objects[obj.object_id] = obj
                 except Exception as e:
@@ -213,8 +233,8 @@ class MLPhysicsBridge:
         
         # Process each object in the scene
         for obj in scene.objects.values():
-            if obj.object_type == ObjectType.PLANE:
-                # Ground plane is already created by physics engine
+            # Skip any ground plane objects (physics engine creates ground automatically)
+            if hasattr(ObjectType, 'PLANE') and obj.object_type == ObjectType.PLANE:
                 continue
             
             try:
@@ -276,12 +296,12 @@ class MLPhysicsBridge:
         elif obj.object_type == ObjectType.RAMP:
             # Create ramp with rotation
             angle = obj.rotation.y  # Use Y rotation for ramp angle
-            angle = max(-1.0, min(angle, 1.0))  # Clamp angle
+            angle = max(-1.5, min(angle, 1.5))  # Allow larger angles (±1.5 radians ≈ ±86°)
             
             size = (
-                max(0.5, min(obj.scale.x, 4.0)),  # Length
-                max(0.1, min(obj.scale.y, 0.5)),  # Thickness
-                max(0.5, min(obj.scale.z, 2.0))   # Width
+                max(0.5, min(obj.scale.x, 5.0)),  # Length - allow up to 5m
+                max(0.05, min(obj.scale.y, 1.0)), # Thickness - allow thinner ramps (0.05m min)
+                max(0.2, min(obj.scale.z, 3.0))   # Width - allow narrower ramps (0.2m min)
             )
             
             physics_id = self.physics_engine.create_ramp(

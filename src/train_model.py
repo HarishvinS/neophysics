@@ -1,162 +1,195 @@
 """
-Training script for the Learnable Physics Engine's sequence-to-sequence model.
+Train the T5 model for Neophysics.
 
-This script handles:
-1. Generating or loading training data.
-2. Setting up a PyTorch Dataset and DataLoader.
-3. Initializing the T5 model.
-4. Running the training loop.
-5. Saving the trained model for inference.
+This script loads a dataset, splits it into training and testing sets,
+trains the model, and evaluates its performance on the test set.
 """
 
-import torch
 import argparse
-from torch.utils.data import Dataset, DataLoader
-from torch.optim import AdamW
-from transformers import get_linear_schedule_with_warmup
 import json
 import os
+import torch
+from torch.utils.data import DataLoader, Dataset, random_split
+from transformers import T5ForConditionalGeneration, T5Tokenizer, get_linear_schedule_with_warmup
 from tqdm import tqdm
-
-from nlp_model import Seq2SeqModel
-from generate_dataset import RobustDataGenerator, summarize_dataset
-
-
-
-# A placeholder for dynamic_scene_representation if it's not available when running standalone
-try:
-    from dynamic_scene_representation import ObjectType, MaterialType, Vector3, DynamicPhysicsScene, DynamicPhysicsObject
-except ImportError:
-    print("Warning: `dynamic_scene_representation` not found. Using placeholders for training script.")
-    class ObjectType:
-        SPHERE = "sphere"
-        BOX = "box"
-        RAMP = "ramp"
-    class MaterialType:
-        WOOD = "wood"
-        METAL = "metal"
-        RUBBER = "rubber"
-    class Vector3:
-        def __init__(self, x, y, z): pass
-        def to_tuple(self): return (0, 0, 0)
-    class DynamicPhysicsObject: pass
-    class DynamicPhysicsScene: pass
-
+from torch.optim import AdamW
+import numpy as np
 
 class PhysicsDataset(Dataset):
-    """PyTorch Dataset for text-to-action-sequence data."""
-    def __init__(self, data, tokenizer, source_max_len=128, target_max_len=256):
+    """PyTorch Dataset for physics command translation."""
+    def __init__(self, tokenizer, data, max_length=128):
         self.tokenizer = tokenizer
-        self.data = data
-        self.source_max_len = source_max_len
-        self.target_max_len = target_max_len
-        self.prefix = "translate English to ActionSequence: "
+        self.texts = [item['text'] for item in data]
+        self.actions = [item['action_sequence'] for item in data]
+        self.max_length = max_length
 
     def __len__(self):
-        return len(self.data)
+        return len(self.texts)
 
-    def __getitem__(self, index):
-        item = self.data[index]
-        source_text = self.prefix + item['text']
-        target_text = item['action_sequence']
+    def __getitem__(self, idx):
+        text = self.texts[idx]
+        action = self.actions[idx]
 
-        source = self.tokenizer(source_text, max_length=self.source_max_len, padding='max_length', truncation=True, return_tensors="pt")
-        target = self.tokenizer(target_text, max_length=self.target_max_len, padding='max_length', truncation=True, return_tensors="pt")
+        # T5 requires a prefix for the task
+        input_text = f"translate English to Physics: {text}"
 
-        source_ids = source['input_ids'].squeeze()
-        source_mask = source['attention_mask'].squeeze()
-        target_ids = target['input_ids'].squeeze()
+        input_encoding = self.tokenizer(
+            input_text,
+            padding='max_length',
+            truncation=True,
+            max_length=self.max_length,
+            return_tensors='pt'
+        )
         
+        target_encoding = self.tokenizer(
+            action,
+            padding='max_length',
+            truncation=True,
+            max_length=self.max_length,
+            return_tensors='pt'
+        )
+
+        labels = target_encoding['input_ids']
         # Replace padding token id in the labels with -100 for loss calculation
-        labels = target_ids.clone()
         labels[labels == self.tokenizer.pad_token_id] = -100
 
-        return {"input_ids": source_ids, "attention_mask": source_mask, "labels": labels}
+        return {
+            'input_ids': input_encoding['input_ids'].flatten(),
+            'attention_mask': input_encoding['attention_mask'].flatten(),
+            'labels': labels.flatten(),
+            'source_text': text,
+            'target_text': action
+        }
 
-def train(model, train_loader, optimizer, scheduler, device, epochs=3):
-    """The main training loop."""
+def calculate_accuracy(model, tokenizer, dataloader, device):
+    """Calculates exact match accuracy on a given dataset."""
+    model.eval()
+    correct_predictions = 0
+    total_predictions = 0
+    mismatched_examples = []
+
+    with torch.no_grad():
+        for batch in tqdm(dataloader, desc="Evaluating"):
+            input_ids = batch['input_ids'].to(device)
+            attention_mask = batch['attention_mask'].to(device)
+
+            generated_ids = model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                max_length=128,
+                num_beams=4,
+                early_stopping=True
+            )
+
+            preds = [tokenizer.decode(g, skip_special_tokens=True, clean_up_tokenization_spaces=True) for g in generated_ids]
+            
+            targets = batch['target_text']
+            sources = batch['source_text']
+
+            for i in range(len(preds)):
+                pred_text = preds[i].strip()
+                target_text = targets[i].strip()
+
+                if pred_text == target_text:
+                    correct_predictions += 1
+                elif len(mismatched_examples) < 5: # Collect up to 5 examples
+                    mismatched_examples.append({
+                        "source": sources[i],
+                        "target": target_text,
+                        "predicted": pred_text
+                    })
+                total_predictions += 1
+    
+    accuracy = correct_predictions / total_predictions if total_predictions > 0 else 0
+    return accuracy, mismatched_examples
+
+def train(args):
+    """Main training and evaluation function."""
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f"Using device: {device}")
+
+    tokenizer = T5Tokenizer.from_pretrained(args.model_name)
+    model = T5ForConditionalGeneration.from_pretrained(args.model_name)
     model.to(device)
-    for epoch in range(epochs):
-        print(f"--- Epoch {epoch + 1}/{epochs} ---")
+
+    print(f"Loading data from {args.data_path}...")
+    with open(args.data_path, 'r') as f:
+        data = json.load(f)
+    
+    dataset = PhysicsDataset(tokenizer, data, max_length=args.max_seq_length)
+
+    # Split data into training and testing sets with a fixed seed for reproducibility
+    dataset_size = len(dataset)
+    if not 0 < args.test_split_size < 1:
+        raise ValueError("test_split_size must be between 0 and 1.")
+    test_size = int(np.floor(args.test_split_size * dataset_size))
+    train_size = dataset_size - test_size
+    
+    train_dataset, test_dataset = random_split(
+        dataset, [train_size, test_size], generator=torch.Generator().manual_seed(42)
+    )
+    print(f"Dataset split: {len(train_dataset)} training, {len(test_dataset)} testing examples.")
+
+    train_dataloader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
+
+    optimizer = AdamW(model.parameters(), lr=args.learning_rate)
+    total_steps = len(train_dataloader) * args.epochs
+    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=total_steps)
+
+    print("Starting training...")
+    for epoch in range(args.epochs):
+        print(f"\n--- Epoch {epoch + 1}/{args.epochs} ---")
         model.train()
         total_loss = 0
         
-        progress_bar = tqdm(train_loader, desc=f"Epoch {epoch+1} Training")
-        for batch in progress_bar:
+        for batch in tqdm(train_dataloader, desc=f"Training Epoch {epoch+1}"):
             optimizer.zero_grad()
             
-            input_ids = batch['input_ids'].to(device)
-            attention_mask = batch['attention_mask'].to(device)
-            labels = batch['labels'].to(device)
-
-            outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+            input_ids, attention_mask, labels = batch['input_ids'].to(device), batch['attention_mask'].to(device), batch['labels'].to(device)
             
+            outputs = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
             loss = outputs.loss
+            total_loss += loss.item()
+            
             loss.backward()
             optimizer.step()
             scheduler.step()
             
-            total_loss += loss.item()
-            progress_bar.set_postfix({'loss': loss.item()})
+        avg_train_loss = total_loss / len(train_dataloader)
+        print(f"Average Training Loss: {avg_train_loss:.4f}")
 
-        avg_loss = total_loss / len(train_loader)
-        print(f"Epoch {epoch + 1} Average Loss: {avg_loss:.4f}")
+    print("\nTraining finished. Running evaluation on the test set...")
+    accuracy, mismatched = calculate_accuracy(model, tokenizer, test_dataloader, device)
+    print(f"\nTest Set Accuracy (Exact Match): {accuracy:.4f}")
 
-def main():
-    # --- Argument Parsing ---
-    parser = argparse.ArgumentParser(description="Train the sequence-to-sequence model for the physics engine.")
-    parser.add_argument('--epochs', type=int, default=3, help='Number of training epochs.')
-    parser.add_argument('--batch_size', type=int, default=8, help='Batch size for training.')
-    parser.add_argument('--lr', type=float, default=3e-4, help='Learning rate.')
-    parser.add_argument('--num_examples', type=int, default=500, help='Number of examples to generate if data file does not exist.')
-    parser.add_argument('--data_path', type=str, default="training_data.json", help='Path to the training data JSON file.')
-    parser.add_argument('--save_path', type=str, default="models/physics_model", help='Directory to save the trained model.')
-    
-    args = parser.parse_args()
+    if mismatched:
+        print("\n--- Showing Mismatched Predictions from Test Set ---")
+        for i, item in enumerate(mismatched):
+            print(f"\nExample {i+1}:")
+            print(f"  Source:    '{item['source']}'")
+            print(f"  Target:    '{item['target']}'")
+            print(f"  Predicted: '{item['predicted']}'")
+            if item['target'].endswith(';') and not item['predicted'].endswith(';'):
+                print("  Analysis:   Predicted sequence may be missing the trailing ';'")
 
-    # --- Configuration ---
-    TRAIN_DATA_PATH = args.data_path
-    MODEL_SAVE_PATH = args.save_path
-    NUM_EXAMPLES = args.num_examples
-    BATCH_SIZE = args.batch_size
-    LEARNING_RATE = args.lr
-    EPOCHS = args.epochs
-
-    # --- 1. Generate Data ---
-    if not os.path.exists(TRAIN_DATA_PATH):
-        print(f"'{TRAIN_DATA_PATH}' not found. Generating new dataset...")
-        generator = RobustDataGenerator()
-        dataset = generator.generate_dataset(num_examples=NUM_EXAMPLES)
-        if dataset:
-            summarize_dataset(dataset)
-    else:
-        print(f"Found existing dataset at '{TRAIN_DATA_PATH}'.")
-        with open(TRAIN_DATA_PATH, 'r') as f:
-            dataset = json.load(f)
-
-    # --- 2. Initialize Model and Tokenizer ---
-    print("Initializing T5 model and tokenizer...")
-    model = Seq2SeqModel(model_name="t5-small")
-    
-    # --- 3. Create Dataset and DataLoader ---
-    train_dataset = PhysicsDataset(dataset, model.tokenizer)
-    train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
-
-    # --- 4. Setup Optimizer and Scheduler ---
-    optimizer = AdamW(model.parameters(), lr=LEARNING_RATE)
-    total_steps = len(train_loader) * EPOCHS
-    scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=total_steps)
-
-    # --- 5. Train the Model ---
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Starting training on {device}...")
-    train(model, train_loader, optimizer, scheduler, device, epochs=EPOCHS)
-
-    # --- 6. Save the Model ---
-    print(f"Training complete. Saving model to '{MODEL_SAVE_PATH}'...")
-    os.makedirs(MODEL_SAVE_PATH, exist_ok=True)
-    model.save(MODEL_SAVE_PATH)
-    print("✅ Model saved successfully!")
+    if args.output_dir:
+        print(f"Saving model to {args.output_dir}...")
+        os.makedirs(args.output_dir, exist_ok=True)
+        model.save_pretrained(args.output_dir)
+        tokenizer.save_pretrained(args.output_dir)
+        print("Model saved.")
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser(description="Train a T5 model for Neophysics.")
+    parser.add_argument("--data_path", type=str, default="data/training_data_balanced.json", help="Path to the training data JSON file.")
+    parser.add_argument("--model_name", type=str, default="t5-small", help="Pre-trained model name.")
+    parser.add_argument("--output_dir", type=str, default="models/physics_model", help="Directory to save the trained model.")
+    parser.add_argument("--epochs", type=int, default=10, help="Number of training epochs.")
+    parser.add_argument("--batch_size", type=int, default=4, help="Training batch size.")
+    parser.add_argument("--learning_rate", type=float, default=5e-4, help="Learning rate.")
+    parser.add_argument("--max_seq_length", type=int, default=256, help="Maximum sequence length.")
+    parser.add_argument("--test_split_size", type=float, default=0.2, help="Proportion of the dataset to use for testing (e.g., 0.2 for 20%).")
+    
+    args = parser.parse_args()
+    train(args)

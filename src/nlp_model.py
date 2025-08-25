@@ -26,7 +26,7 @@ class Seq2SeqModel(nn.Module):
         # T5 requires a prefix for text-to-text tasks.
         input_text = f"translate English to ActionSequence: {text}"
         
-        inputs = self.tokenizer(input_text, return_tensors='pt', max_length=128, padding='max_length', truncation=True)
+        inputs = self.tokenizer(input_text, return_tensors='pt', max_length=256, padding='max_length', truncation=True)
         
         input_ids = inputs.input_ids.to(self.model.device)
         attention_mask = inputs.attention_mask.to(self.model.device)

@@ -11,6 +11,9 @@ from typing import List, Tuple, Dict, Optional, Any
 
 class PhysicsEngine:
     """Main physics engine class using PyBullet for simulation."""
+
+    SIM_FREQ_HZ = 240
+    TIME_STEP = 1. / SIM_FREQ_HZ
     
     def __init__(self, use_gui=True):
         """
@@ -39,7 +42,7 @@ class PhysicsEngine:
         p.setGravity(0, 0, -9.81, physicsClientId=self.physics_client)
         
         # Set time step for simulation
-        p.setTimeStep(1./240., physicsClientId=self.physics_client)
+        p.setTimeStep(self.TIME_STEP, physicsClientId=self.physics_client)
         
         # Create ground plane
         self.create_ground_plane()
@@ -66,6 +69,13 @@ class PhysicsEngine:
         
         self.objects['ground'] = ground_body
         return ground_body
+
+    def _track_object(self, body_id: int, obj_type: str, properties: Dict[str, Any]):
+        """Adds an object to internal tracking dictionaries."""
+        object_name = f"{obj_type}_{self.object_counter}"
+        self.objects[object_name] = body_id
+        self.object_counter += 1
+        self.object_metadata[body_id] = {'type': obj_type, **properties}
     
     def create_sphere(self, position=(0, 0, 1), radius=0.1, mass=1.0, color=(1, 0, 0),
                       restitution=0.8, lateral_friction=0.5):
@@ -116,11 +126,7 @@ class PhysicsEngine:
         )
         
         # Track object
-        object_name = f"sphere_{self.object_counter}"
-        self.objects[object_name] = body_id
-        self.object_counter += 1
-        self.object_metadata[body_id] = {
-            'type': 'sphere',
+        properties = {
             'position': position,
             'radius': radius,
             'mass': mass,
@@ -128,6 +134,7 @@ class PhysicsEngine:
             'restitution': restitution,
             'lateral_friction': lateral_friction
         }
+        self._track_object(body_id, 'sphere', properties)
         
         return body_id
     
@@ -180,11 +187,7 @@ class PhysicsEngine:
         )
         
         # Track object
-        object_name = f"box_{self.object_counter}"
-        self.objects[object_name] = body_id
-        self.object_counter += 1
-        self.object_metadata[body_id] = {
-            'type': 'box',
+        properties = {
             'position': position,
             'half_extents': half_extents,
             'mass': mass,
@@ -192,6 +195,7 @@ class PhysicsEngine:
             'restitution': restitution,
             'lateral_friction': lateral_friction
         }
+        self._track_object(body_id, 'box', properties)
         
         return body_id
     
@@ -249,11 +253,7 @@ class PhysicsEngine:
         )
         
         # Track object
-        object_name = f"ramp_{self.object_counter}"
-        self.objects[object_name] = body_id
-        self.object_counter += 1
-        self.object_metadata[body_id] = {
-            'type': 'ramp',
+        properties = {
             'position': position,
             'angle': angle,
             'size': size,
@@ -262,6 +262,7 @@ class PhysicsEngine:
             'restitution': restitution,
             'lateral_friction': lateral_friction
         }
+        self._track_object(body_id, 'ramp', properties)
         
         return body_id
 
@@ -295,13 +296,13 @@ class PhysicsEngine:
             duration: Simulation duration in seconds
             real_time: Whether to run in real-time
         """
-        steps = int(duration * 240)  # 240 Hz
+        steps = int(duration * self.SIM_FREQ_HZ)
         
         for i in range(steps):
             p.stepSimulation(physicsClientId=self.physics_client)
             
             if real_time:
-                time.sleep(1./240.)
+                time.sleep(self.TIME_STEP)
     
     def get_object_state(self, object_id):
         """

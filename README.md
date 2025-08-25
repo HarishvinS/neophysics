@@ -75,7 +75,7 @@ python src/generate_dataset.py --num_examples 1000
 
 ### 2. Train the Model
 ```bash
-# Quick training (3 epochs)
+# Quick training (3 epochs) with 20% test split
 python src/train_model.py --epochs 3
 
 # Full training (20 epochs)

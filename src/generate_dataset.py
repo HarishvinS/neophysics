@@ -64,11 +64,11 @@ class RobustDataGenerator:
             radius = random.uniform(0.1, 0.4)
             obj.scale = Vector3(radius, radius, radius)
 
-        # Occasionally add initial velocity
-        if random.random() < 0.2:
-            vx = random.uniform(-3, 3)
-            vy = random.uniform(-3, 3)
-            vz = random.uniform(0, 2)
+        # More frequently add initial velocity
+        if random.random() < 0.4:
+            vx = random.uniform(-5, 5)
+            vy = random.uniform(-5, 5)
+            vz = random.uniform(0, 3)
             obj.initial_velocity = Vector3(vx, vy, vz)
 
         return obj
@@ -176,9 +176,15 @@ class RobustDataGenerator:
                 desc = f"a {mass_desc} {obj.color_name} {obj.object_type.value}".replace(" a ", " a ").strip()
                 descriptions.append(desc)
 
-            # Describe velocity
+            # Describe velocity with specific speeds
             if np.linalg.norm(obj.initial_velocity.to_tuple()) > 0.1:
-                descriptions[-1] += " moving quickly"
+                speed = np.linalg.norm(obj.initial_velocity.to_tuple())
+                if speed > 5:
+                    descriptions[-1] += " moving fast"
+                elif speed > 2:
+                    descriptions[-1] += f" with {speed:.0f}m/s initial velocity"
+                else:
+                    descriptions[-1] += " moving slowly"
 
         # Combine descriptions
         if not descriptions:
@@ -208,21 +214,22 @@ class RobustDataGenerator:
         relationships = []
 
         for obj in scene.objects.values():
-            # Use a list to build the parts of the action string
+            # Use a list to build the parts of the action string with consistent CREATE prefix
             action_parts = [
+                "CREATE",
                 f"id={obj.object_id}",
                 f"type={obj.object_type.value}",
                 # Format tuples with fixed precision for consistency
-                f"pos=({obj.position.x:.4f}, {obj.position.y:.4f}, {obj.position.z:.4f})",
-                f"rot=({obj.rotation.x:.4f}, {obj.rotation.y:.4f}, {obj.rotation.z:.4f})",
-                f"scale=({obj.scale.x:.4f}, {obj.scale.y:.4f}, {obj.scale.z:.4f})",
+                f"pos=({obj.position.x:.4f},{obj.position.y:.4f},{obj.position.z:.4f})",
+                f"rot=({obj.rotation.x:.4f},{obj.rotation.y:.4f},{obj.rotation.z:.4f})",
+                f"scale=({obj.scale.x:.4f},{obj.scale.y:.4f},{obj.scale.z:.4f})",
                 f"mass={obj.mass:.2f}",
                 f"material={obj.material.value}"
             ]
 
             # Add velocity only if it's significant, and ensure it's a standard float
             if hasattr(obj, 'initial_velocity') and np.linalg.norm([obj.initial_velocity.x, obj.initial_velocity.y, obj.initial_velocity.z]) > 1e-6:
-                vel_str = f"({float(obj.initial_velocity.x):.4f}, {float(obj.initial_velocity.y):.4f}, {float(obj.initial_velocity.z):.4f})"
+                vel_str = f"({float(obj.initial_velocity.x):.4f},{float(obj.initial_velocity.y):.4f},{float(obj.initial_velocity.z):.4f})"
                 action_parts.append(f"velocity={vel_str}")
 
             actions.append(" ".join(action_parts) + ";")
@@ -249,7 +256,7 @@ class RobustDataGenerator:
             })
         
         # Save to file
-        filepath = "training_data.json"
+        filepath = "data/training_data.json"
         with open(filepath, 'w') as f:
             json.dump(dataset, f, indent=2)
         
@@ -512,6 +519,9 @@ class RobustDataGenerator:
             pos, orn_quat = p.getBasePositionAndOrientation(body_id, physicsClientId=engine.physics_client)
             orn_euler = p.getEulerFromQuaternion(orn_quat)
 
+            # Get current velocity from simulation
+            vel, _ = p.getBaseVelocity(body_id, physicsClientId=engine.physics_client)
+            
             dpo = DynamicPhysicsObject(
                 object_id=f"obj{obj_counter}",
                 object_type=obj_type_enum,
@@ -519,7 +529,7 @@ class RobustDataGenerator:
                 mass=meta['mass'], material=MaterialType.WOOD, color=meta['color']
             )
             dpo.color_name = get_color_name(meta['color'], self.colors)
-            dpo.initial_velocity = Vector3(*state['velocity'])
+            dpo.initial_velocity = Vector3(*vel)
             scene.add_object(dpo)
             obj_counter += 1
         return scene
@@ -640,7 +650,7 @@ class RobustDataGenerator:
 
     def _save_sample(self, sample: Dict):
         """Loads existing dataset, appends a new sample, and saves it."""
-        filepath = "training_data.json"
+        filepath = "data/training_data.json"
         try:
             with open(filepath, 'r') as f:
                 dataset = json.load(f)
@@ -702,26 +712,122 @@ def summarize_dataset(dataset: List[Dict], generator: RobustDataGenerator = None
         print("---------------------------------\n")
 
 
+def augment_existing_data(input_file: str, multiplier: int = 10) -> List[Dict]:
+    """Augment existing hand-made data by tweaking values slightly."""
+    import re
+    
+    try:
+        with open(input_file, 'r') as f:
+            original_data = json.load(f)
+    except FileNotFoundError:
+        print(f"File {input_file} not found")
+        return []
+    
+    augmented_data = []
+    
+    for original in original_data:
+        # Keep original
+        augmented_data.append(original)
+        
+        # Create variations
+        for i in range(multiplier - 1):
+            action_seq = original['action_sequence']
+            
+            # Tweak position values
+            tweaked_seq = re.sub(r'pos=\(([^,]+),([^,]+),([^)]+)\)', 
+                               lambda m: f"pos=({float(m.group(1)) + random.uniform(-0.01, 0.01):.4f},{float(m.group(2)) + random.uniform(-0.01, 0.01):.4f},{float(m.group(3)) + random.uniform(-0.01, 0.01):.4f})", 
+                               action_seq)
+            
+            # Tweak rotation values (preserve ramp angles)
+            def tweak_rotation(match):
+                x, y, z = float(match.group(1)), float(match.group(2)), float(match.group(3))
+                # If this has a significant Y rotation (likely a ramp), preserve the angle
+                if abs(y) > 0.1:
+                    return f"rot=({x + random.uniform(-0.01, 0.01):.4f},{y + random.uniform(-0.05, 0.05):.4f},{z + random.uniform(-0.01, 0.01):.4f})"
+                else:
+                    return f"rot=({x + random.uniform(-0.01, 0.01):.4f},{y + random.uniform(-0.01, 0.01):.4f},{z + random.uniform(-0.01, 0.01):.4f})"
+            tweaked_seq = re.sub(r'rot=\(([^,]+),([^,]+),([^)]+)\)', tweak_rotation, tweaked_seq)
+            
+            # Tweak scale values (preserve ramp characteristics)
+            def tweak_scale(match):
+                x, y, z = float(match.group(1)), float(match.group(2)), float(match.group(3))
+                # If this looks like a ramp (large x, small y, medium z), preserve the pattern
+                if x > 1.5 and y < 0.5 and z > 0.5:
+                    # Keep ramp proportions: large x, thin y, medium z
+                    return f"scale=({x + random.uniform(-0.1, 0.1):.4f},{y + random.uniform(-0.02, 0.02):.4f},{z + random.uniform(-0.1, 0.1):.4f})"
+                else:
+                    # Normal objects get small variations
+                    return f"scale=({x + random.uniform(-0.005, 0.005):.4f},{y + random.uniform(-0.005, 0.005):.4f},{z + random.uniform(-0.005, 0.005):.4f})"
+            tweaked_seq = re.sub(r'scale=\(([^,]+),([^,]+),([^)]+)\)', tweak_scale, tweaked_seq)
+            
+            # Tweak velocity if present
+            tweaked_seq = re.sub(r'velocity=\(([^,]+),([^,]+),([^)]+)\)', 
+                               lambda m: f"velocity=({float(m.group(1)) + random.uniform(-0.01, 0.01):.4f},{float(m.group(2)) + random.uniform(-0.01, 0.01):.4f},{float(m.group(3)) + random.uniform(-0.01, 0.01):.4f})", 
+                               tweaked_seq)
+            
+            augmented_data.append({
+                "id": f"{original['id']}_aug_{i+1}",
+                "text": original['text'],
+                "action_sequence": tweaked_seq
+            })
+    
+    return augmented_data
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate a dataset for the Learnable Physics Engine.")
     parser.add_argument('--num_examples', type=int, default=100, help='Number of examples to generate.')
     parser.add_argument('--visualize', type=int, help='Visualize a specific sample index from the existing dataset.')
+    parser.add_argument('--visualize_id', type=str, help='Visualize a specific sample by its ID from the dataset.')
     parser.add_argument('--interactive', action='store_true', help='Enter interactive mode to manually create and label scenes.')
     parser.add_argument('--duration', type=float, default=5.0, help='Visualization duration in seconds')
+    parser.add_argument('--augment', type=str, help='Augment existing data file by tweaking values')
+    parser.add_argument('--multiplier', type=int, default=10, help='How many variations to create per original example')
     args = parser.parse_args()
 
     generator = RobustDataGenerator()
 
-    if args.interactive:
+    if args.augment:
+        # Augment existing data
+        print(f"Augmenting data from {args.augment} with {args.multiplier}x multiplier...")
+        augmented_data = augment_existing_data(args.augment, args.multiplier)
+        
+        # Save augmented data
+        output_file = args.augment.replace('.json', '_augmented.json')
+        with open(output_file, 'w') as f:
+            json.dump(augmented_data, f, indent=2)
+        
+        print(f"✅ Augmented dataset with {len(augmented_data)} examples saved to {output_file}")
+        summarize_dataset(augmented_data)
+        print(f"\nTo visualize by ID, run: `python src/generate_dataset.py --visualize_id <sample_id>`")
+        
+    elif args.interactive:
         generator.run_interactive_mode()
     elif args.visualize is not None:
-        # Load existing dataset and visualize
+        # Load existing dataset and visualize by index
         try:
             with open('training_data.json', 'r') as f:
                 dataset = json.load(f)
             generator.visualize_dataset_sample(dataset, args.visualize, args.duration)
         except FileNotFoundError:
             print("No training_data.json found. Generate a dataset first with --num_examples or --interactive.")
+    elif args.visualize_id is not None:
+        # Load existing dataset and visualize by ID
+        try:
+            with open('data/training_data.json', 'r') as f:
+                dataset = json.load(f)
+            # Find sample with matching ID
+            sample_index = None
+            for i, sample in enumerate(dataset):
+                if sample['id'] == args.visualize_id:
+                    sample_index = i
+                    break
+            if sample_index is not None:
+                print(f"Found sample with ID '{args.visualize_id}' at index {sample_index}")
+                generator.visualize_dataset_sample(dataset, sample_index, args.duration)
+            else:
+                print(f"No sample found with ID '{args.visualize_id}'")
+        except FileNotFoundError:
+            print("No data/training_data.json found.")
     else:
         # Generate a dataset and print its summary
         dataset = generator.generate_dataset(num_examples=args.num_examples)
@@ -731,3 +837,5 @@ if __name__ == "__main__":
         if len(dataset) > 0:
             print("\nTo visualize samples, run: `python src/generate_dataset.py --visualize 0`")
             print("To create data manually, run: `python src/generate_dataset.py --interactive`")
+            print(f"To augment existing data, run: `python src/generate_dataset.py --augment data/training_data.json --multiplier 10`")
+            print(f"To visualize by ID, run: `python src/generate_dataset.py --visualize_id interactive_1755907337`")
