@@ -1,26 +1,30 @@
 # Neophysics - Natural Language Physics Engine
 
-A machine learning-powered 3D physics simulation engine that interprets natural language commands and generates realistic physics scenarios. Built with PyBullet for physics simulation and T5 transformer for natural language understanding.
+A machine learning-powered 3D physics simulation engine that interprets natural language commands and generates realistic physics scenarios. Built with PyBullet for physics simulation and OpenAI's gpt-oss-20b for advanced natural language understanding with chain-of-thought reasoning.
 
 ## Overview
 
 Neophysics translates plain English descriptions into structured physics simulations. Users can create physics scenarios by typing commands like "create a ball on a ramp" and watch the simulation unfold in real-time.
 
 **Things it can do:**
-- Natural language to physics translation using T5 transformer
+- Natural language to physics translation using OpenAI gpt-oss-20b with chain-of-thought reasoning
 - Real-time 3D physics simulation with PyBullet
 - Interactive GUI for command input and simulation control
-- Extensible training pipeline for custom physics scenarios
+- Local inference with efficient MoE architecture (21B parameters, ~3.6B active)
+- Advanced reasoning capabilities for complex physics scenarios
 
 ## Quick Start
 
 ### Prerequisites
 - Python 3.8+
-- 4GB+ RAM recommended
-- GPU optional (for faster training)
+- Ollama installed (https://ollama.ai/download)
+- 16GB+ RAM recommended (for gpt-oss-20b)
+- GPU recommended (CUDA-compatible for optimal performance)
+- Fallback to T5-small available for lower-spec systems
 
 ### Installation
 
+#### Quick Setup (Recommended)
 ```bash
 # Clone repository
 git clone https://github.com/yourusername/neophysics.git
@@ -37,17 +41,45 @@ source venv/bin/activate
 
 # Install dependencies
 pip install -r requirements.txt
+
+# Install Ollama (if not already installed)
+# Download from: https://ollama.ai/download
+# Then pull the model:
+ollama pull gpt-oss:20b
+```
+
+#### Manual Installation
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Setup Ollama model
+ollama pull gpt-oss:20b
 ```
 
 ### Running the Application
 
 ```bash
-# Launch interactive GUI
+# Launch with auto-detection (default)
 python src/main.py
+
+# Force specific model
+python src/main.py --model t5-small
+python src/main.py --model gpt-oss
+python src/main.py --model t5-trained
 
 # Test physics engine directly
 python src/physics_engine.py
 ```
+
+### Model Backends
+
+Neophysics now supports multiple model backends:
+
+- **gpt-oss-20b** (Recommended): OpenAI's open-source model via Ollama
+- **t5-small**: Lightweight fallback for resource-constrained systems
+
+Requires Ollama installation: `ollama pull gpt-oss:20b`
 
 ## Usage
 
@@ -116,7 +148,7 @@ Trained models are automatically loaded from `models/physics_model/`. If no trai
 |--------|---------|-------------|
 | `main.py` | GUI Application | Tkinter interface, command processing |
 | `physics_engine.py` | Physics Simulation | PyBullet integration, object creation |
-| `nlp_model.py` | Language Model | T5 transformer wrapper |
+| `nlp_model.py` | Language Model | OpenAI gpt-oss-20b wrapper with T5 fallback |
 | `ml_physics_bridge.py` | ML-Physics Integration | Action sequence parsing, object mapping |
 | `realtime_simulator.py` | Simulation Engine | Real-time physics, data capture |
 | `physics_validator.py` | Validation System | Physics plausibility checking |
@@ -124,14 +156,16 @@ Trained models are automatically loaded from `models/physics_model/`. If no trai
 ### Data Flow
 
 ```
-Natural Language → T5 Model → Action Sequence → Physics Objects → 3D Simulation
+Natural Language → GPT-OSS-20B → Chain-of-Thought → Action Sequence → Physics Objects → 3D Simulation
 ```
 
 **Example Pipeline:**
 ```
 Input: "create a ball on a ramp"
 ↓
-T5 Model Output: "CREATE id=obj1 type=sphere pos=(0,0,1) ...; CREATE id=obj2 type=ramp ..."
+GPT-OSS-20B Reasoning: "I need to create a sphere and a ramp, position the sphere above the ramp..."
+↓
+Action Output: "CREATE id=obj1 type=sphere pos=(0,0,1) ...; CREATE id=obj2 type=ramp ..."
 ↓
 Parsed Objects: [Sphere(pos=(0,0,1)), Ramp(pos=(0,0,0), angle=0.3)]
 ↓
@@ -210,18 +244,20 @@ neophysics/
 
 ### Dependencies
 - **PyTorch**: ML model training and inference
-- **Transformers**: Hugging Face T5 implementation
+- **Transformers**: Hugging Face model implementations
+- **vLLM**: Efficient inference for gpt-oss-20b (optional)
 - **PyBullet**: 3D physics simulation
 - **NumPy**: Numerical computations
 - **Tkinter**: GUI framework (built-in)
 - **tqdm**: Progress tracking
 
 ### Performance
-- **Model Size**: ~60MB (T5-small base)
-- **Inference Time**: ~40ms per command
-- **Training Time**: ~10 minutes for 1000 examples (CPU)
-- **Memory Usage**: ~500MB during simulation
+- **Model Size**: ~21B parameters (~40GB), ~3.6B active per token
+- **Inference Time**: ~200ms per command (with reasoning)
+- **Memory Usage**: ~16GB for model + ~500MB simulation
 - **Physics FPS**: 60-240 Hz (configurable)
+- **Reasoning**: Chain-of-thought with adjustable levels (low/medium/high)
+- **Fallback**: T5-small (~60MB) for resource-constrained systems
 
 ### Limitations
 - Basic geometric shapes only (sphere, box, ramp)

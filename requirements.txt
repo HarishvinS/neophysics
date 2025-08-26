@@ -1,8 +1,17 @@
 # Core ML and Physics Dependencies
 torch>=2.0.0
 transformers>=4.30.0
-sentencepiece  # Required for T5 Tokenizer
+sentencepiece  # Required for T5 Tokenizer (legacy)
 sentence-transformers>=2.2.0
+
+# OpenAI client for Ollama API
+openai>=1.0.0
+
+# LoRA fine-tuning (optional)
+peft>=0.7.0
+trl>=0.7.0
+bitsandbytes>=0.41.0
+accelerate>=0.24.0
 
 # Physics Simulation
 pybullet>=3.2.0

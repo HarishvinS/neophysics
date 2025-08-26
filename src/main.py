@@ -14,18 +14,20 @@ import re
 from ml_physics_bridge import MLPhysicsBridge
 from realtime_simulator import RealTimeSimulator
 from physics_validator import PhysicsValidator
-from nlp_model import Seq2SeqModel  # <-- Use the Hugging Face T5 model
+from nlp_model import Seq2SeqModel, T5Seq2SeqModel  # <-- Use OpenAI gpt-oss-20b model
+from model_config import ModelConfig
 from dynamic_scene_representation import DynamicPhysicsScene, DynamicPhysicsObject, ObjectType, MaterialType, Vector3
 
 
 class InteractivePhysicsApp:
     """Main interactive application for text-to-physics system."""
     
-    def __init__(self):
+    def __init__(self, model_override=None):
         """Initialize the interactive application."""
         self.root = tk.Tk()
         self.root.title("Learnable Physics Engine - Interactive Mode")
         self.root.geometry("1000x700")
+        self.model_override = model_override
         
         # Components
         self.model = None
@@ -44,7 +46,8 @@ class InteractivePhysicsApp:
         # Try to load model automatically
         self._load_model_async()
         
-        print("Interactive Physics Engine initialized!")
+        print("Neophysics Interactive Engine initialized!")
+        print("Tip: Run 'python src/model_config.py' to configure your model backend")
     
     def setup_ui(self):
         """Create the user interface."""
@@ -84,10 +87,10 @@ class InteractivePhysicsApp:
         status_frame = ttk.Frame(header_frame)
         status_frame.grid(row=0, column=1, sticky=tk.E)
         
-        self.model_status = ttk.Label(status_frame, text="🔴 Model: Not Loaded", font=('Arial', 9))
+        self.model_status = ttk.Label(status_frame, text="Model: Not Loaded", font=('Arial', 9))
         self.model_status.grid(row=0, column=0, padx=(0, 10))
         
-        self.physics_status = ttk.Label(status_frame, text="🔴 Physics: Not Ready", font=('Arial', 9))
+        self.physics_status = ttk.Label(status_frame, text="Physics: Not Ready", font=('Arial', 9))
         self.physics_status.grid(row=0, column=1)
     
     def setup_control_panel(self, parent):
@@ -117,7 +120,7 @@ class InteractivePhysicsApp:
 
         self.execute_btn = ttk.Button(
             button_frame, 
-            text="🚀 Execute", 
+            text="Execute", 
             command=self.execute_command,
             style='Accent.TButton'
         )
@@ -125,14 +128,14 @@ class InteractivePhysicsApp:
         
         self.validate_btn = ttk.Button(
             button_frame, 
-            text="🔍 Validate", 
+            text="Validate", 
             command=self.validate_command
         )
         self.validate_btn.grid(row=0, column=1, padx=5)
         
         self.clear_btn = ttk.Button(
             button_frame, 
-            text="🧹 Clear", 
+            text="Clear", 
             command=self.clear_scene
         )
         self.clear_btn.grid(row=0, column=2, padx=(5, 0))
@@ -197,7 +200,7 @@ class InteractivePhysicsApp:
         self.progress_bar.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(10, 0))
         
         # Initial messages
-        self.log_message("🚀 Welcome to the Interactive Physics Engine!")
+        self.log_message("Welcome to the Interactive Physics Engine!")
         self.log_message("Loading ML model...")
     
     def log_message(self, message: str, level: str = "INFO"):
@@ -206,13 +209,13 @@ class InteractivePhysicsApp:
         
         # Color coding
         if level == "ERROR":
-            prefix = "❌"
+            prefix = "[ERROR]"
         elif level == "SUCCESS":
-            prefix = "✅"
+            prefix = "[SUCCESS]"
         elif level == "WARNING":
-            prefix = "⚠️"
+            prefix = "[WARNING]"
         else:
-            prefix = "ℹ️"
+            prefix = "[INFO]"
         
         log_entry = f"[{timestamp}] {prefix} {message}\n"
         
@@ -223,14 +226,14 @@ class InteractivePhysicsApp:
     def _update_status_indicators(self):
         """Update status indicators in header."""
         if self.model_loaded:
-            self.model_status.config(text="🟢 Model: Loaded")
+            self.model_status.config(text="Model: Loaded")
         else:
-            self.model_status.config(text="🔴 Model: Not Loaded")
+            self.model_status.config(text="Model: Not Loaded")
         
         if self.physics_initialized:
-            self.physics_status.config(text="🟢 Physics: Ready")
+            self.physics_status.config(text="Physics: Ready")
         else:
-            self.physics_status.config(text="🔴 Physics: Not Ready")
+            self.physics_status.config(text="Physics: Not Ready")
     
     def _load_model_async(self):
         """Load model in background thread."""
@@ -238,17 +241,49 @@ class InteractivePhysicsApp:
             try:
                 self.progress_var.set(20)
                 
-                # Try to load trained model
-                model_path = "models/physics_model" # Path for the saved T5 model
-                
-                if os.path.exists(model_path):
-                    self.log_message("Loading trained model...")
-                    self.model = Seq2SeqModel.load(model_path)
-                    self.log_message("✅ Trained model loaded successfully!", "SUCCESS")
+                # Load model based on override or configuration
+                if self.model_override and self.model_override != 'auto':
+                    backend = self.model_override
+                    self.log_message(f"Using specified backend: {backend}")
                 else:
-                    self.log_message("No trained model found, using pre-trained t5-small", "WARNING")
-                    self.model = Seq2SeqModel(model_name="t5-small")
-                    self.log_message("Using a base model. Training data should be used to train the model.", "WARNING")
+                    config_manager = ModelConfig()
+                    model_config = config_manager.load_config()
+                    backend = model_config.get('selected_backend', 'auto-detect')
+                    
+                    if backend == 'auto-detect':
+                        capabilities = config_manager.detect_system_capabilities()
+                        backend = capabilities['recommended_backend']
+                        self.log_message(f"Auto-detected backend: {backend}")
+                
+                try:
+                    if backend == 'gpt-oss':
+                        self.log_message("Loading GPT-OSS-20B model...")
+                        self.model = Seq2SeqModel(model_name="gpt-oss:20b")
+                        self.log_message("GPT-OSS-20B model loaded successfully!", "SUCCESS")
+                    elif backend == 'gpt-oss-lora':
+                        self.log_message("Loading GPT-OSS-20B LoRA model...")
+                        from nlp_model import GPTOSSLoRAModel
+                        self.model = GPTOSSLoRAModel()
+                        self.log_message("GPT-OSS-20B LoRA model loaded successfully!", "SUCCESS")
+                    elif backend == 't5-trained':
+                        self.log_message("Loading trained T5 model...")
+                        model_path = "models/physics_model"
+                        if os.path.exists(model_path):
+                            self.model = T5Seq2SeqModel.load(model_path)
+                            self.log_message("Trained T5 model loaded", "SUCCESS")
+                        else:
+                            self.log_message("No trained model found, using T5-small", "WARNING")
+                            self.model = T5Seq2SeqModel(model_name="t5-small")
+                    else:  # t5-small or fallback
+                        self.log_message("Loading T5-small model...")
+                        self.model = T5Seq2SeqModel(model_name="t5-small")
+                        self.log_message("T5-small model loaded", "SUCCESS")
+                            
+                except Exception as e:
+                    self.log_message(f"Failed to load {backend}: {str(e)}", "WARNING")
+                    self.log_message("Falling back to T5-small...", "WARNING")
+                    self.model = T5Seq2SeqModel(model_name="t5-small")
+                    self.log_message("T5-small loaded as fallback", "SUCCESS")
                 
                 self.progress_var.set(60)
                 
@@ -268,7 +303,7 @@ class InteractivePhysicsApp:
                 self.progress_var.set(100)
                 
                 self.model_loaded = True
-                self.log_message("🎉 System ready! You can now enter physics commands.", "SUCCESS")
+                self.log_message("System ready! You can now enter physics commands.", "SUCCESS")
                 
             except Exception as e:
                 self.log_message(f"Failed to load model: {str(e)}", "ERROR")
@@ -312,7 +347,7 @@ class InteractivePhysicsApp:
                 
                 # Check if model returned natural language instead of action sequence
                 if not any(keyword in action_sequence_str.upper() for keyword in ['CREATE', 'RELATE', 'ID=', 'TYPE=']):
-                    self.log_message("⚠️ Model returned natural language instead of action sequence. Model may need more training.", "WARNING")
+                    self.log_message("Model returned natural language instead of action sequence. Model may need more training.", "WARNING")
 
                 # 2. Build the scene from this action sequence
                 self.log_message("2. Building scene from action sequence...")
@@ -348,7 +383,7 @@ class InteractivePhysicsApp:
             self.log_message("Please wait for model to load", "WARNING")
             return
         
-        self.log_message(f"🔍 Validating: '{command}'")
+        self.log_message(f"Validating: '{command}'")
         
         def validate():
             try:
@@ -442,7 +477,7 @@ class InteractivePhysicsApp:
                     scene.add_object(obj)
                     self.log_message(f"     > Created '{obj.object_id}' ({obj.object_type.value})")
                 except Exception as e:
-                    self.log_message(f"     > ⚠️ Failed to create object from params {params}: {e}", "WARNING")
+                    self.log_message(f"     > Failed to create object from params {params}: {e}", "WARNING")
             
             elif action['type'] == 'RELATE':
                 # Placeholder for future relationship handling
@@ -461,7 +496,7 @@ class InteractivePhysicsApp:
         """Clear the physics scene."""
         if self.bridge:
             self.bridge.clear_scene()
-            self.log_message("🧹 Scene cleared")
+            self.log_message("Scene cleared")
     
     def on_simulation_event(self, event_type: str, data: dict):
         """Handle simulation events."""
@@ -469,7 +504,7 @@ class InteractivePhysicsApp:
             self.simulation_running = False
             elapsed = data.get('elapsed_time', 0)
             steps = data.get('total_steps', 0)
-            self.log_message(f"✅ Simulation completed: {elapsed:.2f}s, {steps} steps", "SUCCESS")
+            self.log_message(f"Simulation completed: {elapsed:.2f}s, {steps} steps", "SUCCESS")
             
             # Analyze motion
             if hasattr(self, 'simulator') and self.simulator:
@@ -477,7 +512,7 @@ class InteractivePhysicsApp:
                 if 'objects' in analysis:
                     objects_moved = sum(1 for obj in analysis['objects'].values() 
                                       if obj.get('total_displacement', 0) > 0.1)
-                    self.log_message(f"📊 Analysis: {objects_moved} objects moved significantly")
+                    self.log_message(f"Analysis: {objects_moved} objects moved significantly")
     
     def run(self):
         """Start the application."""
@@ -500,7 +535,13 @@ class InteractivePhysicsApp:
 
 def main():
     """Main entry point."""
-    app = InteractivePhysicsApp()
+    import argparse
+    parser = argparse.ArgumentParser(description='Neophysics - Natural Language Physics Engine')
+    parser.add_argument('--model', choices=['gpt-oss', 'gpt-oss-lora', 't5-small', 't5-trained'], default='auto',
+                       help='Model backend to use (default: auto-detect)')
+    args = parser.parse_args()
+    
+    app = InteractivePhysicsApp(model_override=args.model)
     app.run()
 
 
