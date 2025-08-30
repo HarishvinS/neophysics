@@ -64,7 +64,6 @@ ollama pull gpt-oss:20b
 python src/main.py
 
 # Force specific model
-python src/main.py --model t5-small
 python src/main.py --model gpt-oss
 python src/main.py --model t5-trained
 
