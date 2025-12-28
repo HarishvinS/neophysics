@@ -8,8 +8,9 @@ import numpy as np
 from typing import Dict, List, Tuple, Optional, Any
 import time
 import re
+import ast
 
-from nlp_model import Seq2SeqModel
+from nlp_model import PhysicsTranslationModel
 from dynamic_scene_representation import DynamicPhysicsScene, DynamicPhysicsObject, ObjectType, MaterialType, Vector3
 from physics_engine import PhysicsEngine
 
@@ -17,7 +18,7 @@ from physics_engine import PhysicsEngine
 class MLPhysicsBridge:
     """Bridge between ML predictions and PyBullet physics simulation."""
     
-    def __init__(self, model: Seq2SeqModel, use_gui: bool = True):
+    def __init__(self, model: PhysicsTranslationModel, use_gui: bool = True):
         """
         Initialize the ML-Physics bridge.
         
@@ -125,6 +126,19 @@ class MLPhysicsBridge:
                 actions.append({'type': action_type, 'params': params})
         return actions
 
+    def _safe_eval_tuple(self, val_str: str, default: tuple) -> tuple:
+        """Safely evaluate a string representation of a tuple."""
+        try:
+            val_str = val_str.strip()
+            if not val_str:
+                return default
+            val = ast.literal_eval(val_str)
+            if isinstance(val, tuple) or isinstance(val, list):
+                return tuple(val)
+            return default
+        except (ValueError, SyntaxError):
+            return default
+
     def _build_scene_from_action_sequence(self, action_sequence_str: str) -> DynamicPhysicsScene:
         """Builds a DynamicPhysicsScene from a predicted action sequence string."""
         scene = DynamicPhysicsScene("predicted_scene")
@@ -140,9 +154,10 @@ class MLPhysicsBridge:
                 params = action['params']
                 try:
                     # Safely parse tuple values
-                    pos_tuple = eval(params.get('pos', '(0,0,1)'))
-                    rot_tuple = eval(params.get('rot', '(0,0,0)'))
-                    scale_tuple = eval(params.get('scale', '(0.5,0.5,0.5)'))
+                    pos_tuple = self._safe_eval_tuple(params.get('pos', ''), (0,0,1))
+                    rot_tuple = self._safe_eval_tuple(params.get('rot', ''), (0,0,0))
+                    scale_tuple = self._safe_eval_tuple(params.get('scale', ''), (0.5,0.5,0.5))
+                    
                     obj_id = params.get('id', f"obj_{len(temp_objects)}")
 
                     # Handle unknown materials by defaulting to wood
@@ -181,7 +196,7 @@ class MLPhysicsBridge:
                     self._apply_relationship(subject_obj, target_obj, rel_type)
                 else:
                     print(f"     > ⚠️ Could not find objects for relationship: {subject_id} '{rel_type}' {target_id}")
-
+        
         # Final pass: Add all processed objects to the scene.
         for obj in temp_objects.values():
             scene.add_object(obj)
@@ -191,9 +206,6 @@ class MLPhysicsBridge:
     def _apply_relationship(self, subject: DynamicPhysicsObject, target: DynamicPhysicsObject, rel_type: str):
         """
         Adjusts the subject's properties based on its relationship to the target.
-        This is a generalizable approach that uses object bounding boxes, avoiding hardcoded rules.
-        The model is expected to learn specific placements (e.g., 'top of ramp'), while this
-        function provides a general physical constraint (e.g., 'on top of').
         """
         print(f"     > Applying relationship: {subject.object_id} '{rel_type}' {target.object_id}")
 
@@ -214,8 +226,6 @@ class MLPhysicsBridge:
             subject.position.z = target_top_z + subject_vertical_extent + 0.01  # Epsilon to prevent initial collision
 
             print(f"       -> Moved {subject.object_id} to {subject.position.to_tuple()}")
-
-        # Other relationships like 'next_to' or 'inside' could be added here with similar general logic.
 
     def scene_to_physics(self, scene: DynamicPhysicsScene) -> List[int]:
         """
@@ -357,13 +367,6 @@ class MLPhysicsBridge:
     def run_simulation(self, duration: float = 3.0, real_time: bool = True) -> Dict:
         """
         Run physics simulation and collect results.
-        
-        Args:
-            duration: Simulation duration in seconds
-            real_time: Whether to run in real-time
-            
-        Returns:
-            Simulation results
         """
         if self.physics_engine is None:
             raise RuntimeError("Physics engine not initialized")
@@ -459,28 +462,9 @@ def test_ml_physics_bridge():
     """Test the ML-Physics bridge."""
     print("Testing ML-Physics Bridge...")
     
-    # Load trained model if available
-    model_path = "models/trained_model/final_model.pth"
-    
-    if os.path.exists(model_path):
-        print("Loading trained model...")
-        from model_architecture import ModelConfig
-        
-        config = ModelConfig()
-        model = TextToSceneModel(hidden_size=config.hidden_size, max_objects=config.max_objects)
-        
-        checkpoint = torch.load(model_path, map_location='cpu')
-        model.load_state_dict(checkpoint['model_state_dict'])
-        model.eval()
-        
-        print("✅ Trained model loaded")
-    else:
-        print("No trained model found, using untrained model for testing...")
-        from model_architecture import ModelConfig
-        
-        config = ModelConfig()
-        model = TextToSceneModel(hidden_size=config.hidden_size, max_objects=config.max_objects)
-    
+    # Load trained model if available, else usage T5
+    model = PhysicsTranslationModel(model_name="t5-small")
+
     # Create bridge
     bridge = MLPhysicsBridge(model, use_gui=True)
     
@@ -518,5 +502,4 @@ def test_ml_physics_bridge():
 
 
 if __name__ == "__main__":
-    import os
     test_ml_physics_bridge()

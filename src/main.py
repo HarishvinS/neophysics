@@ -8,26 +8,25 @@ from tkinter import ttk, scrolledtext, messagebox
 import threading
 import time
 import os
+import ast
 from typing import Optional, Dict, List, Any
 import re
 
 from ml_physics_bridge import MLPhysicsBridge
 from realtime_simulator import RealTimeSimulator
 from physics_validator import PhysicsValidator
-from nlp_model import Seq2SeqModel, T5Seq2SeqModel  # <-- Use OpenAI gpt-oss-20b model
-from model_config import ModelConfig
+from nlp_model import PhysicsTranslationModel
 from dynamic_scene_representation import DynamicPhysicsScene, DynamicPhysicsObject, ObjectType, MaterialType, Vector3
 
 
 class InteractivePhysicsApp:
     """Main interactive application for text-to-physics system."""
     
-    def __init__(self, model_override=None):
+    def __init__(self):
         """Initialize the interactive application."""
         self.root = tk.Tk()
-        self.root.title("Learnable Physics Engine - Interactive Mode")
+        self.root.title("Neophysics Engine - Interactive Mode")
         self.root.geometry("1000x700")
-        self.model_override = model_override
         
         # Components
         self.model = None
@@ -47,7 +46,6 @@ class InteractivePhysicsApp:
         self._load_model_async()
         
         print("Neophysics Interactive Engine initialized!")
-        print("Tip: Run 'python src/model_config.py' to configure your model backend")
     
     def setup_ui(self):
         """Create the user interface."""
@@ -241,48 +239,21 @@ class InteractivePhysicsApp:
             try:
                 self.progress_var.set(20)
                 
-                # Load model based on override or configuration
-                if self.model_override and self.model_override != 'auto':
-                    backend = self.model_override
-                    self.log_message(f"Using specified backend: {backend}")
-                else:
-                    config_manager = ModelConfig()
-                    model_config = config_manager.load_config()
-                    backend = model_config.get('selected_backend', 'auto-detect')
-                    
-                    if backend == 'auto-detect':
-                        capabilities = config_manager.detect_system_capabilities()
-                        backend = capabilities['recommended_backend']
-                        self.log_message(f"Auto-detected backend: {backend}")
-                
                 try:
-                    if backend == 'gpt-oss':
-                        self.log_message("Loading GPT-OSS-20B model...")
-                        self.model = Seq2SeqModel(model_name="gpt-oss:20b")
-                        self.log_message("GPT-OSS-20B model loaded successfully!", "SUCCESS")
-                    elif backend == 'gpt-oss-lora':
-                        self.log_message("Loading GPT-OSS-20B LoRA model...")
-                        from nlp_model import GPTOSSLoRAModel
-                        self.model = GPTOSSLoRAModel()
-                        self.log_message("GPT-OSS-20B LoRA model loaded successfully!", "SUCCESS")
-                    elif backend == 't5-trained':
-                        self.log_message("Loading trained T5 model...")
-                        model_path = "models/physics_model"
-                        if os.path.exists(model_path):
-                            self.model = T5Seq2SeqModel.load(model_path)
-                            self.log_message("Trained T5 model loaded", "SUCCESS")
-                        else:
-                            self.log_message("No trained model found, using T5-small", "WARNING")
-                            self.model = T5Seq2SeqModel(model_name="t5-small")
-                    else:  # t5-small or fallback
-                        self.log_message("Loading T5-small model...")
-                        self.model = T5Seq2SeqModel(model_name="t5-small")
-                        self.log_message("T5-small model loaded", "SUCCESS")
+                    self.log_message("Loading T5 physics model...")
+                    model_path = "models/physics_model"
+                    if os.path.exists(model_path):
+                        self.model = PhysicsTranslationModel.load(model_path)
+                        self.log_message("Trained T5 model loaded", "SUCCESS")
+                    else:
+                        self.log_message("No trained model found, using T5-small", "WARNING")
+                        self.model = PhysicsTranslationModel(model_name="t5-small")
+                        self.log_message("T5-small model loaded as fallback", "SUCCESS")
                             
                 except Exception as e:
-                    self.log_message(f"Failed to load {backend}: {str(e)}", "WARNING")
+                    self.log_message(f"Failed to load model: {str(e)}", "WARNING")
                     self.log_message("Falling back to T5-small...", "WARNING")
-                    self.model = T5Seq2SeqModel(model_name="t5-small")
+                    self.model = PhysicsTranslationModel(model_name="t5-small")
                     self.log_message("T5-small loaded as fallback", "SUCCESS")
                 
                 self.progress_var.set(60)
@@ -345,10 +316,6 @@ class InteractivePhysicsApp:
                 action_sequence_str = self.model.generate(command)
                 self.log_message(f"   > Predicted sequence: {action_sequence_str}")
                 
-                # Check if model returned natural language instead of action sequence
-                if not any(keyword in action_sequence_str.upper() for keyword in ['CREATE', 'RELATE', 'ID=', 'TYPE=']):
-                    self.log_message("Model returned natural language instead of action sequence. Model may need more training.", "WARNING")
-
                 # 2. Build the scene from this action sequence
                 self.log_message("2. Building scene from action sequence...")
                 scene = self._build_scene_from_action_sequence(action_sequence_str)
@@ -407,20 +374,23 @@ class InteractivePhysicsApp:
         thread = threading.Thread(target=validate, daemon=True)
         thread.start()
 
+    def _safe_eval_tuple(self, val_str: str, default: tuple) -> tuple:
+        """Safely evaluate a string representation of a tuple."""
+        try:
+            val_str = val_str.strip()
+            if not val_str:
+                return default
+            # Use ast.literal_eval for safe parsing
+            val = ast.literal_eval(val_str)
+            if isinstance(val, tuple) or isinstance(val, list):
+                return tuple(val)
+            return default
+        except (ValueError, SyntaxError):
+            return default
+
     def _parse_action_sequence(self, seq_str: str) -> List[Dict[str, Any]]:
         """Parses the action sequence string from the model into a list of action dicts."""
         actions = []
-        
-        # Handle case where model returns natural language instead of action sequence
-        if not any(keyword in seq_str.upper() for keyword in ['CREATE', 'RELATE', 'ID=', 'TYPE=']):
-            self.log_message(f"Model returned natural language instead of action sequence: {seq_str}", "WARNING")
-            # Try to create a simple default object based on common words
-            if any(word in seq_str.lower() for word in ['ball', 'sphere']):
-                return [{'type': 'CREATE', 'params': {'id': 'obj1', 'type': 'sphere', 'pos': '(0,0,1)', 'rot': '(0,0,0)', 'scale': '(0.2,0.2,0.2)', 'mass': '1.0', 'material': 'wood'}}]
-            elif any(word in seq_str.lower() for word in ['box', 'cube']):
-                return [{'type': 'CREATE', 'params': {'id': 'obj1', 'type': 'box', 'pos': '(0,0,1)', 'rot': '(0,0,0)', 'scale': '(0.2,0.2,0.2)', 'mass': '1.0', 'material': 'wood'}}]
-            else:
-                return [{'type': 'CREATE', 'params': {'id': 'obj1', 'type': 'sphere', 'pos': '(0,0,1)', 'rot': '(0,0,0)', 'scale': '(0.2,0.2,0.2)', 'mass': '1.0', 'material': 'wood'}}]
         
         # Split by semicolon to get individual actions
         action_strs = [s.strip() for s in seq_str.split(';') if s.strip()]
@@ -456,23 +426,40 @@ class InteractivePhysicsApp:
                 params = action['params']
                 try:
                     # Safely parse tuple values
-                    pos_tuple = eval(params.get('pos', '(0,0,1)'))
-                    rot_tuple = eval(params.get('rot', '(0,0,0)'))
-                    scale_tuple = eval(params.get('scale', '(0.5,0.5,0.5)'))
+                    pos_tuple = self._safe_eval_tuple(params.get('pos', ''), (0,0,1))
+                    rot_tuple = self._safe_eval_tuple(params.get('rot', ''), (0,0,0))
+                    
+                    # Handle flexible scale definitions
+                    default_scale = (0.5, 0.5, 0.5)
+                    scale_param = params.get('scale', '')
+                    scale_tuple = self._safe_eval_tuple(scale_param, default_scale)
                     
                     # Extract material name (remove color if present)
                     material_str = params.get('material', 'wood')
                     if ' ' in material_str:
                         material_str = material_str.split()[0]
+                    
+                    # Validate material
+                    try:
+                        material_enum = MaterialType(material_str)
+                    except ValueError:
+                        material_enum = MaterialType.WOOD
+
+                    # Validate ObjectType
+                    type_str = params.get('type', 'box')
+                    try:
+                        object_type = ObjectType(type_str)
+                    except ValueError:
+                        object_type = ObjectType.BOX
 
                     obj = DynamicPhysicsObject(
                         object_id=params.get('id', f"obj_{len(scene.objects)}"),
-                        object_type=ObjectType(params.get('type', 'box')),
+                        object_type=object_type,
                         position=Vector3(*pos_tuple),
                         rotation=Vector3(*rot_tuple),
                         scale=Vector3(*scale_tuple),
                         mass=float(params.get('mass', 1.0)),
-                        material=MaterialType(material_str)
+                        material=material_enum
                     )
                     scene.add_object(obj)
                     self.log_message(f"     > Created '{obj.object_id}' ({obj.object_type.value})")
@@ -535,13 +522,7 @@ class InteractivePhysicsApp:
 
 def main():
     """Main entry point."""
-    import argparse
-    parser = argparse.ArgumentParser(description='Neophysics - Natural Language Physics Engine')
-    parser.add_argument('--model', choices=['gpt-oss', 'gpt-oss-lora', 't5-small', 't5-trained'], default='auto',
-                       help='Model backend to use (default: auto-detect)')
-    args = parser.parse_args()
-    
-    app = InteractivePhysicsApp(model_override=args.model)
+    app = InteractivePhysicsApp()
     app.run()
 
 
