@@ -289,14 +289,6 @@ neophysics/
 - Ensure sufficient disk space for model checkpoints
 - Use smaller batch size if running out of memory
 
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/new-feature`)
-3. Make changes and add tests
-4. Commit changes (`git commit -am 'Add new feature'`)
-5. Push to branch (`git push origin feature/new-feature`)
-6. Create Pull Request
 
 ## License
 
