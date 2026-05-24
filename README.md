@@ -1,6 +1,6 @@
 # Neophysics - Natural Language Physics Engine
 
-A machine learning-powered 3D physics simulation engine that interprets natural language commands and generates realistic physics scenarios. Built with PyBullet for physics simulation, a finetuned T5 model or OpenAI's gpt-oss-20b for advanced natural language understanding with chain-of-thought reasoning.
+A 3D physics simulation engine that interprets natural language commands and generates realistic physics scenarios. Built with PyBullet for physics simulation, a finetuned T5 model or OpenAI's gpt-oss-20b for advanced natural language understanding with chain-of-thought reasoning.
 
 ### Important - OpenAI gpt-oss-20b is not fine-tuned, more data is needed for T5 model to be generalizable
 
